@@ -205,22 +205,34 @@ private fun StatusLine(ui: UiState) {
 
 @Composable
 private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit) {
-    val usbFixed = ui.usb == true
-    val enabled = ui.connected && ui.status.volumeAvailable && !usbFixed
-    val vol = ui.localVolume ?: ui.status.volume
+    val amp = ui.amp
+    val usbFixed = amp == null && ui.usb == true
+    val enabled = ui.connected && (amp != null || (ui.status.volumeAvailable && !usbFixed))
+    val max = amp?.max ?: 100
+    val vol = ui.localVolume ?: amp?.pos ?: ui.status.volume
+    val muted = amp?.muted ?: ui.status.muted
+
+    // Число и единица: у усилителя в дБ (pos - max), иначе проценты Фокса
+    val (number, unit) = when {
+        !ui.connected || vol < 0 -> "--" to ""
+        amp != null && amp.db -> (vol - amp.max).toString() to "dB"
+        amp != null -> vol.toString() to ""
+        else -> vol.toString() to "%"
+    }
+
     Row(verticalAlignment = Alignment.Bottom) {
         Column(Modifier.weight(1f)) {
-            Text("ГРОМКОСТЬ", style = Caption)
+            Text(if (amp != null) "ГРОМКОСТЬ УСИЛИТЕЛЯ" else "ГРОМКОСТЬ", style = Caption)
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    if (vol >= 0 && ui.connected) vol.toString() else "--",
-                    color = if (enabled) Fg else Dim,
+                    number,
+                    color = if (enabled && !muted) Fg else Dim,
                     fontFamily = Mono,
                     fontSize = 56.sp,
                     fontWeight = FontWeight.Light,
                 )
                 Text(
-                    "%",
+                    unit,
                     color = Dim,
                     fontFamily = Mono,
                     fontSize = 18.sp,
@@ -230,8 +242,8 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
         }
         HifiButton(
             text = "MUTE",
-            active = ui.status.muted,
-            enabled = ui.connected && ui.status.volumeAvailable,
+            active = muted,
+            enabled = ui.connected && (amp != null || ui.status.volumeAvailable),
             modifier = Modifier
                 .width(96.dp)
                 .padding(bottom = 12.dp),
@@ -239,9 +251,9 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
         )
     }
     Slider(
-        value = (if (vol >= 0) vol else 0).toFloat(),
-        onValueChange = { onVolume(it.toInt()) },
-        valueRange = 0f..100f,
+        value = vol.coerceIn(0, max).toFloat(),
+        onValueChange = { onVolume(Math.round(it)) },
+        valueRange = 0f..max.toFloat(),
         enabled = enabled,
         colors = SliderDefaults.colors(
             thumbColor = Fg,
@@ -252,14 +264,19 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
             disabledInactiveTrackColor = Line,
         ),
     )
-    if (ui.connected && usbFixed) {
-        Text(
+    when {
+        amp != null -> Text(
+            "Фокс на 100% (bit-perfect), громкость регулирует AX5689",
+            color = Dim,
+            fontSize = 12.sp,
+        )
+        ui.connected && usbFixed -> Text(
             "USB → I2S: громкость фиксирована на 100% (bit-perfect). Регулируйте на ПК или в усилителе.",
             color = Dim,
             fontSize = 12.sp,
         )
-    } else if (ui.connected && !ui.status.volumeAvailable) {
-        Text("Регулировка громкости в этом режиме недоступна", color = Dim, fontSize = 12.sp)
+        ui.connected && !ui.status.volumeAvailable ->
+            Text("Регулировка громкости в этом режиме недоступна", color = Dim, fontSize = 12.sp)
     }
 }
 

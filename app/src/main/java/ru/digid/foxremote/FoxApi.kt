@@ -16,6 +16,16 @@ data class FoxStatus(
     val volumeAvailable: Boolean = true,
 )
 
+/** Громкость усилителя DigiD D1 (amp.php на Фоксе, связь через STM32) */
+data class AmpStatus(
+    val pos: Int,          // положение 0..max
+    val max: Int,
+    val muted: Boolean,
+    val db: Boolean,       // true — показывать (pos - max) дБ
+)
+
+class AmpNotInstalled : Exception("amp.php not installed")
+
 class FoxException(val code: Int, text: String) : Exception(if (code > 0) "HTTP $code: $text" else text)
 
 /**
@@ -117,6 +127,33 @@ class FoxApi(private val host: String) {
         request("rate.php").trim()
     } catch (e: FoxException) {
         if (e.code == 404) null else throw e
+    }
+
+    /**
+     * Громкость усилителя. null — amp.php на Фоксе нет или усилитель ещё не на связи.
+     * Отличаем: notInstalled = true, если файла нет совсем (404).
+     */
+    suspend fun amp(): AmpStatus? {
+        val j = try {
+            JSONObject(request("amp.php"))
+        } catch (e: FoxException) {
+            if (e.code == 404) throw AmpNotInstalled() else throw e
+        }
+        if (!j.optBoolean("present", false)) return null
+        return AmpStatus(
+            pos = j.optInt("pos", 0),
+            max = j.optInt("max", 100).coerceAtLeast(1),
+            muted = j.optBoolean("mute", false),
+            db = j.optBoolean("db", false),
+        )
+    }
+
+    suspend fun setAmpVolume(pos: Int) {
+        request("amp.php", mapOf("action" to "vol", "pos" to pos.toString()))
+    }
+
+    suspend fun ampMute() {
+        request("amp.php", mapOf("action" to "mute"))
     }
 
     companion object {

@@ -33,3 +33,16 @@ Android-пульт для сетевого плеера на **PureFox** (Luckfo
     scp extras/rate.php root@purefox.local:/var/www/rate.php
 
 (пароль `purefox`). После обновления прошивки PureFox файл может пропасть — повторить.
+
+## Громкость усилителя DigiD D1 (необязательно)
+
+Если усилитель (STM32) подключён к консольному UART Фокса и на Фоксе работает
+`pfctl serve`, приложение регулирует громкость AX5689, а Фокс держит на 100% (bit-perfect).
+
+На Фокс (по SSH):
+
+    cp pfctl /usr/bin/pfctl && chmod +x /usr/bin/pfctl
+    cp amp.php /var/www/amp.php
+    printf 'ttyFIQ0::respawn:/usr/bin/pfctl serve\n' >> /etc/inittab; kill -HUP 1
+
+Файлы — в папке `extras/`.

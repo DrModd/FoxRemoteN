@@ -30,7 +30,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun volumeKeysActive(): Boolean =
-        vm.ui.connected && vm.ui.status.volumeAvailable && vm.ui.usb != true
+        vm.ui.connected && (vm.ui.amp != null || (vm.ui.status.volumeAvailable && vm.ui.usb != true))
 
     // Кнопки громкости телефона управляют громкостью Фокса, пока приложение на экране
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {

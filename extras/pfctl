@@ -1,0 +1,167 @@
+#!/bin/sh
+#
+# pfctl — управление PureFox с внешнего МК (STM32) через консольный UART
+#
+# Два режима:
+#   1) разовые команды из шелла:     pfctl src qobuz
+#   2) сервер на консоли (без шелла): в /etc/inittab
+#        ttyFIQ0::respawn:/usr/bin/pfctl serve
+#      читает команды построчно, отвечает строками, начинающимися с '@'
+#
+# Все ответы — одна строка, начинается с '@' (так МК отличит их от
+# сообщений ядра и загрузчика):
+#   @READY                 — сервер запущен, можно слать команды
+#   @OK <cmd> [<значение>] — успех
+#   @ERR <cmd> <причина>   — ошибка
+#   @BUSY <cmd>            — начато долгое действие (держать AX5689 в mute)
+#   @ST <json>             — status_fast.php одной строкой
+#   @RATE <Гц> <формат>    — текущий поток, например: @RATE 192000 S32_LE
+#   @RATE DSD<N>           — DSD, например: @RATE DSD128
+#   @RATE STOP             — ничего не играет
+# В режиме serve @RATE также приходит сам при каждой смене потока.
+#
+# Команды (регистр не важен, \r от МК отбрасывается):
+#   src <id>          naa raat mpd aprenderer aplayer apscream shairport lms
+#                     spotify qobuz celmusper tidalconnect
+#   usb on|off|get    режим USBtoI2S
+#   vol <0-100>|up|down|get
+#   mute              переключить mute
+#   st                полный статус (JSON)
+#   rate              текущая частота/формат
+#   ping              -> @PONG
+#   avol <pos> <max> <mute> <db>
+#                     от усилителя (STM32): его текущая громкость. Сохраняется
+#                     в /tmp/amp_state для приложения (amp.php). Ответа нет.
+#
+# Запросы приложения к усилителю (amp.php кладёт их в /tmp/amp_req):
+#   "vol <pos>" -> в UART уходит  @AVOL <pos>
+#   "mute"      -> в UART уходит  @AMUTE
+
+URL=http://127.0.0.1
+WGET="wget -q -T 60 -O -"
+PLAYERS=" naa raat mpd aprenderer aplayer apscream shairport lms spotify qobuz celmusper tidalconnect "
+
+oneline() { tr -d '\r\n'; }
+post()    { $WGET --post-data="$2" "$URL/$1" 2>/dev/null | oneline; }
+get()     { $WGET "$URL/$1" 2>/dev/null | oneline; }
+ok()      { echo "@OK $*"; }
+err()     { echo "@ERR $*"; }
+
+# --- текущая частота/формат из ALSA ---------------------------------------
+rate_now() {
+    for f in /proc/asound/card*/pcm*p/sub0/hw_params; do
+        [ -r "$f" ] || continue
+        grep -q '^closed' "$f" && continue
+        fmt=$(sed -n 's/^format: *//p' "$f")
+        hz=$(sed -n 's/^rate: *\([0-9]*\).*/\1/p' "$f")
+        [ -z "$hz" ] && continue
+        case "$fmt" in
+            DSD_U32*) echo "DSD$((hz * 32 / 44100))"; return ;;
+            DSD_U16*) echo "DSD$((hz * 16 / 44100))"; return ;;
+            DSD_U8*)  echo "DSD$((hz * 8 / 44100))";  return ;;
+            *)        echo "$hz $fmt"; return ;;
+        esac
+    done
+    echo STOP
+}
+
+# --- выполнение одной команды ---------------------------------------------
+do_cmd() {
+    cmd=$(echo "$1" | tr 'A-Z' 'a-z'); arg=$(echo "$2" | tr 'A-Z' 'a-z')
+    case "$cmd" in
+        ping) echo "@PONG" ;;
+
+        src)
+            case "$PLAYERS" in *" $arg "*) ;; *) err src bad_id; return ;; esac
+            echo "@BUSY src"
+            r=$(post handle_service.php "service=$arg")
+            case "$r" in *'"status":"success"'*) ok src "$arg" ;; *) err src "$r" ;; esac
+            ;;
+
+        usb)
+            case "$arg" in
+                on)  a=enable ;;
+                off) a=disable ;;
+                get|"")
+                    r=$(post usb_to_i2s.php action=status)
+                    case "$r" in *true*) ok usb on ;; *false*) ok usb off ;; *) err usb "$r" ;; esac
+                    return ;;
+                *) err usb bad_arg; return ;;
+            esac
+            echo "@BUSY usb"
+            r=$(post usb_to_i2s.php "action=$a")
+            case "$r" in *successfully*) ok usb "$arg" ;; *) err usb "$r" ;; esac
+            ;;
+
+        vol)
+            case "$arg" in
+                up)   r=$(post volume.php action=volume_up) ;;
+                down) r=$(post volume.php action=volume_down) ;;
+                get|"") r=$(post volume.php action=get_volume) ;;
+                *[!0-9]*) err vol bad_arg; return ;;
+                *)    [ "$arg" -le 100 ] || { err vol bad_arg; return; }
+                      r=$(post volume.php "action=set_volume&volume=$arg") ;;
+            esac
+            case "$r" in *'"error"'*) err vol "$r"; return ;; esac
+            # после изменения перечитываем фактическое значение
+            case "$r" in *'"volume"'*) ;; *) r=$(post volume.php action=get_volume) ;; esac
+            ok vol "$(echo "$r" | sed -n 's/.*"volume":"\{0,1\}\([0-9]*\).*/\1/p')"
+            ;;
+
+        mute)
+            r=$(post volume.php action=toggle_mute)
+            case "$r" in
+                *'"muted":true'*)  ok mute 1 ;;
+                *'"muted":false'*) ok mute 0 ;;
+                *) err mute "$r" ;;
+            esac
+            ;;
+
+        st)   echo "@ST $(get status_fast.php)" ;;
+
+        avol) # громкость усилителя от STM32 — молча сохранить для приложения
+            echo "$2 $3 $4 $5 $(date +%s)" > /tmp/amp_state.tmp && mv /tmp/amp_state.tmp /tmp/amp_state
+            ;;
+        rate) echo "@RATE $(rate_now)" ;;
+        "")   ;;
+        *)    err "$cmd" unknown ;;
+    esac
+}
+
+# --- сервер на консоли ----------------------------------------------------
+serve() {
+    stty -echo 2>/dev/null          # не возвращать эхо в МК
+    dmesg -n 1 2>/dev/null          # убрать сообщения ядра с консоли
+    # фоновый наблюдатель: смена потока и запросы приложения к усилителю
+    (
+        last=""; n=0
+        while true; do
+            if [ -f /tmp/amp_req ]; then
+                req=$(cat /tmp/amp_req); rm -f /tmp/amp_req
+                case "$req" in
+                    vol\ *) echo "@AVOL ${req#vol }" ;;
+                    mute)   echo "@AMUTE" ;;
+                esac
+            fi
+            n=$((n + 1))
+            if [ $n -ge 3 ]; then          # частоту — раз в ~0,5 с
+                n=0
+                cur=$(rate_now)
+                [ "$cur" != "$last" ] && echo "@RATE $cur" && last=$cur
+            fi
+            sleep 0.15
+        done
+    ) &
+    echo "@READY"
+    while IFS= read -r line; do
+        line=$(echo "$line" | tr -d '\r')
+        set -- $line
+        do_cmd "$@"
+    done
+}
+
+case "$1" in
+    serve) serve ;;
+    "")    echo "usage: pfctl serve | pfctl <cmd> [arg]"; exit 1 ;;
+    *)     do_cmd "$1" "$2" ;;
+esac

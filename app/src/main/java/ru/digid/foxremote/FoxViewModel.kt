@@ -41,7 +41,8 @@ data class UiState(
     val busy: String? = null,          // текст долгого действия или null
     val error: String? = null,
     val discovering: Boolean = false,
-    val localVolume: Int? = null,      // громкость, которую двигает пользователь (до ответа Фокса)
+    val localVolume: Int? = null,      // громкость, которую двигает пользователь (до ответа)
+    val amp: AmpStatus? = null,        // усилитель на связи — громкость регулирует он
 )
 
 class FoxViewModel(app: Application) : AndroidViewModel(app) {
@@ -56,6 +57,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     private var pollJob: Job? = null
     private var volumeJob: Job? = null
     private var rateSupported = true
+    private var ampSupported = true
 
     init {
         if (ui.host.isBlank()) discover()
@@ -68,7 +70,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString("host", h).apply()
         api = if (h.isBlank()) null else FoxApi(h)
         rateSupported = true
-        ui = ui.copy(host = h, connected = false, error = null, rate = null)
+        ampSupported = true
+        ui = ui.copy(host = h, connected = false, error = null, rate = null, amp = null)
         viewModelScope.launch { refresh() }
     }
 
@@ -111,9 +114,17 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         try {
             var st = a.status()
             val usb = a.usbMode()
-            // В режиме USB → I2S регулировка громкости в драйвере PureFox даёт искажения,
-            // поэтому держим там 100% (обработка в драйвере при 100% полностью отключена).
-            if (usb && st.volumeAvailable && st.volume in 0..99) {
+            var amp: AmpStatus? = null
+            if (ampSupported) {
+                amp = try {
+                    a.amp()
+                } catch (e: AmpNotInstalled) {
+                    ampSupported = false; null
+                }
+            }
+            // Фокс держим на 100% (bit-perfect), если громкость регулирует усилитель,
+            // и в режиме USB → I2S (регулировка в драйвере PureFox там даёт искажения).
+            if ((usb || amp != null) && st.volumeAvailable && st.volume in 0..99) {
                 a.setVolume(100)
                 st = st.copy(volume = 100)
             }
@@ -123,7 +134,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                 if (raw == null) rateSupported = false else rate = formatRate(raw)
             }
             if (api !== a) return  // пока ждали ответ, сменили адрес
-            ui = ui.copy(connected = true, status = st, usb = usb, rate = rate, error = null)
+            ui = ui.copy(connected = true, status = st, usb = usb, rate = rate, amp = amp, error = null)
         } catch (e: Exception) {
             if (api !== a) return
             ui = ui.copy(connected = false, error = "Нет связи с ${ui.host}")
@@ -166,6 +177,17 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleMute() {
         val a = api ?: return
+        if (ui.amp != null) {
+            viewModelScope.launch {
+                try {
+                    a.ampMute()
+                    ui = ui.copy(amp = ui.amp?.let { it.copy(muted = !it.muted) })
+                } catch (e: Exception) {
+                    ui = ui.copy(error = e.message)
+                }
+            }
+            return
+        }
         viewModelScope.launch {
             try {
                 val m = a.toggleMute()
@@ -178,14 +200,26 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Ползунок: двигаем локально, отправляем с небольшой задержкой */
     fun setVolume(v: Int) {
-        if (ui.usb == true) return
-        ui = ui.copy(localVolume = v.coerceIn(0, 100))
+        val amp = ui.amp
+        if (amp != null) {
+            ui = ui.copy(localVolume = v.coerceIn(0, amp.max))
+        } else {
+            if (ui.usb == true) return
+            ui = ui.copy(localVolume = v.coerceIn(0, 100))
+        }
         sendVolumeDebounced()
     }
 
     /** Аппаратные кнопки телефона */
     fun volumeStep(delta: Int) {
-        if (!ui.connected || !ui.status.volumeAvailable || ui.usb == true) return
+        if (!ui.connected) return
+        val amp = ui.amp
+        if (amp != null) {
+            val cur = ui.localVolume ?: amp.pos
+            setVolume(cur + if (delta > 0) 1 else -1)   // шаг усилителя (1 дБ)
+            return
+        }
+        if (!ui.status.volumeAvailable || ui.usb == true) return
         val cur = ui.localVolume ?: ui.status.volume.takeIf { it >= 0 } ?: return
         setVolume(cur + delta)
     }
@@ -197,8 +231,14 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
             val a = api ?: return@launch
             val v = ui.localVolume ?: return@launch
             try {
-                a.setVolume(v)
-                ui = ui.copy(status = ui.status.copy(volume = v))
+                val amp = ui.amp
+                if (amp != null) {
+                    a.setAmpVolume(v)
+                    ui = ui.copy(amp = amp.copy(pos = v, muted = false))
+                } else {
+                    a.setVolume(v)
+                    ui = ui.copy(status = ui.status.copy(volume = v))
+                }
             } catch (e: Exception) {
                 ui = ui.copy(error = e.message)
             }
