@@ -22,6 +22,7 @@ data class AmpStatus(
     val max: Int,
     val muted: Boolean,
     val db: Boolean,       // true — показывать (pos - max) дБ
+    val power: Boolean = true,   // false — усилитель в дежурном режиме
 )
 
 class AmpNotInstalled : Exception("amp.php not installed")
@@ -145,6 +146,7 @@ class FoxApi(private val host: String) {
             max = j.optInt("max", 100).coerceAtLeast(1),
             muted = j.optBoolean("mute", false),
             db = j.optBoolean("db", false),
+            power = j.optBoolean("power", true),
         )
     }
 
@@ -154,6 +156,11 @@ class FoxApi(private val host: String) {
 
     suspend fun ampMute() {
         request("amp.php", mapOf("action" to "mute"))
+    }
+
+    /** Включить / выключить усилитель (дежурный режим) */
+    suspend fun ampPower() {
+        request("amp.php", mapOf("action" to "power"))
     }
 
     companion object {

@@ -29,13 +29,19 @@
 #   st                полный статус (JSON)
 #   rate              текущая частота/формат
 #   ping              -> @PONG
-#   avol <pos> <max> <mute> <db>
-#                     от усилителя (STM32): его текущая громкость. Сохраняется
+#   avol <pos> <max> <mute> <db> <power>
+#                     от усилителя (STM32): его состояние. Сохраняется
 #                     в /tmp/amp_state для приложения (amp.php). Ответа нет.
 #
 # Запросы приложения к усилителю (amp.php кладёт их в /tmp/amp_req):
 #   "vol <pos>" -> в UART уходит  @AVOL <pos>
 #   "mute"      -> в UART уходит  @AMUTE
+#   "power"     -> в UART уходит  @APOWER
+#
+# Сам (без запроса) в режиме serve сообщает:
+#   @RATE ...          смена потока
+#   @SRC <id>          сменился плеер (с веб-страницы, из приложения, с усилителя)
+#   @USB on|off        включён/выключен USBtoI2S
 
 URL=http://127.0.0.1
 WGET="wget -q -T 60 -O -"
@@ -74,6 +80,8 @@ do_cmd() {
         src)
             case "$PLAYERS" in *" $arg "*) ;; *) err src bad_id; return ;; esac
             echo "@BUSY src"
+            # из режима USBtoI2S сначала выйти — как это делает веб-интерфейс
+            [ -f /etc/usb_to_i2s.state ] && post usb_to_i2s.php action=disable >/dev/null
             r=$(post handle_service.php "service=$arg")
             case "$r" in *'"status":"success"'*) ok src "$arg" ;; *) err src "$r" ;; esac
             ;;
@@ -120,7 +128,7 @@ do_cmd() {
         st)   echo "@ST $(get status_fast.php)" ;;
 
         avol) # громкость усилителя от STM32 — молча сохранить для приложения
-            echo "$2 $3 $4 $5 $(date +%s)" > /tmp/amp_state.tmp && mv /tmp/amp_state.tmp /tmp/amp_state
+            echo "$2 $3 $4 $5 ${6:-1} $(date +%s)" > /tmp/amp_state.tmp && mv /tmp/amp_state.tmp /tmp/amp_state
             ;;
         rate) echo "@RATE $(rate_now)" ;;
         "")   ;;
@@ -134,13 +142,14 @@ serve() {
     dmesg -n 1 2>/dev/null          # убрать сообщения ядра с консоли
     # фоновый наблюдатель: смена потока и запросы приложения к усилителю
     (
-        last=""; n=0
+        last=""; n=0; m=0; last_svc=""; last_usb=""
         while true; do
             if [ -f /tmp/amp_req ]; then
                 req=$(cat /tmp/amp_req); rm -f /tmp/amp_req
                 case "$req" in
                     vol\ *) echo "@AVOL ${req#vol }" ;;
                     mute)   echo "@AMUTE" ;;
+                    power)  echo "@APOWER" ;;
                 esac
             fi
             n=$((n + 1))
@@ -148,6 +157,14 @@ serve() {
                 n=0
                 cur=$(rate_now)
                 [ "$cur" != "$last" ] && echo "@RATE $cur" && last=$cur
+                m=$((m + 1))
+                if [ $m -ge 2 ]; then      # плеер и режим USB — раз в ~1 с
+                    m=0
+                    svc=$(sed -n 's/.*"active_service":"\([^"]*\)".*/\1/p' /tmp/system_status.json 2>/dev/null)
+                    [ -n "$svc" ] && [ "$svc" != "$last_svc" ] && echo "@SRC $svc" && last_svc=$svc
+                    if [ -f /etc/usb_to_i2s.state ]; then u=on; else u=off; fi
+                    [ "$u" != "$last_usb" ] && echo "@USB $u" && last_usb=$u
+                fi
             fi
             sleep 0.15
         done

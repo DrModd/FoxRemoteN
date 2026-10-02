@@ -17,7 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -70,6 +76,10 @@ fun FoxScreen(vm: FoxViewModel) {
         Spacer(Modifier.height(8.dp))
         StatusLine(ui)
         Spacer(Modifier.height(20.dp))
+        if (ui.amp != null) {
+            PowerRow(ui, onPower = vm::togglePower)
+            Spacer(Modifier.height(16.dp))
+        }
         VolumeBlock(ui, onVolume = vm::setVolume, onMute = vm::toggleMute)
         Spacer(Modifier.height(24.dp))
         Text("РЕЖИМ", style = Caption)
@@ -94,6 +104,7 @@ fun FoxScreen(vm: FoxViewModel) {
             onDismiss = { showSettings = false },
             onSave = { vm.setHost(it); showSettings = false },
             onDiscover = { vm.discover(); showSettings = false },
+            onNotify = vm::setNotify,
         )
     }
 }
@@ -207,7 +218,7 @@ private fun StatusLine(ui: UiState) {
 private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit) {
     val amp = ui.amp
     val usbFixed = amp == null && ui.usb == true
-    val enabled = ui.connected && (amp != null || (ui.status.volumeAvailable && !usbFixed))
+    val enabled = ui.connected && (if (amp != null) amp.power else ui.status.volumeAvailable && !usbFixed)
     val max = amp?.max ?: 100
     val vol = ui.localVolume ?: amp?.pos ?: ui.status.volume
     val muted = amp?.muted ?: ui.status.muted
@@ -243,7 +254,7 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
         HifiButton(
             text = "MUTE",
             active = muted,
-            enabled = ui.connected && (amp != null || ui.status.volumeAvailable),
+            enabled = ui.connected && (if (amp != null) amp.power else ui.status.volumeAvailable),
             modifier = Modifier
                 .width(96.dp)
                 .padding(bottom = 12.dp),
@@ -265,6 +276,11 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
         ),
     )
     when {
+        amp != null && !amp.power -> Text(
+            "Усилитель в дежурном режиме",
+            color = Dim,
+            fontSize = 12.sp,
+        )
         amp != null -> Text(
             "Фокс на 100% (bit-perfect), громкость регулирует AX5689",
             color = Dim,
@@ -277,6 +293,27 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
         )
         ui.connected && !ui.status.volumeAvailable ->
             Text("Регулировка громкости в этом режиме недоступна", color = Dim, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun PowerRow(ui: UiState, onPower: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("УСИЛИТЕЛЬ DIGID D1", style = Caption)
+            Text(
+                if (ui.ampOn) "Включён" else "Дежурный режим",
+                color = if (ui.ampOn) Fg else Dim,
+                fontSize = 16.sp,
+            )
+        }
+        HifiButton(
+            text = "POWER",
+            active = ui.ampOn,
+            enabled = ui.connected && ui.busy == null,
+            modifier = Modifier.width(110.dp),
+            onClick = onPower,
+        )
     }
 }
 
@@ -363,8 +400,12 @@ private fun SettingsDialog(
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
     onDiscover: () -> Unit,
+    onNotify: (Boolean) -> Unit,
 ) {
     var host by remember { mutableStateOf(ui.host) }
+    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        onNotify(granted)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF151515),
@@ -389,6 +430,30 @@ private fun SettingsDialog(
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Найти: поиск по сети (mDNS). Телефон должен быть в той же сети, что и Фокс.",
+                    color = Dim,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = ui.notify,
+                        onCheckedChange = { on ->
+                            if (on && Build.VERSION.SDK_INT >= 33) {
+                                askPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                onNotify(on)
+                            }
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Fg,
+                            uncheckedColor = Dim,
+                            checkmarkColor = Bg,
+                        ),
+                    )
+                    Text("Кнопки в шторке уведомлений", color = Fg, fontSize = 14.sp)
+                }
+                Text(
+                    "Виджет: долгое нажатие на рабочем столе → Виджеты → Fox Remote.",
                     color = Dim,
                     fontSize = 12.sp,
                 )

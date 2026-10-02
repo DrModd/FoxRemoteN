@@ -43,15 +43,23 @@ data class UiState(
     val discovering: Boolean = false,
     val localVolume: Int? = null,      // громкость, которую двигает пользователь (до ответа)
     val amp: AmpStatus? = null,        // усилитель на связи — громкость регулирует он
+    val notify: Boolean = false,       // уведомление с кнопками в шторке
 )
+
+/** Громкость усилителя доступна (усилитель на связи и включён) */
+val UiState.ampOn: Boolean get() = amp?.power ?: false
 
 class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("fox", Context.MODE_PRIVATE)
     private val discovery = FoxDiscovery(app)
 
-    var ui by mutableStateOf(UiState(host = prefs.getString("host", "") ?: ""))
+    var ui by mutableStateOf(
+        UiState(host = prefs.getString("host", "") ?: "", notify = Remote.notifyEnabled(app))
+    )
         private set
+
+    private var lastSnapshot: Remote.Snapshot? = null
 
     private var api: FoxApi? = ui.host.takeIf { it.isNotBlank() }?.let { FoxApi(it) }
     private var pollJob: Job? = null
@@ -139,6 +147,29 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
             if (api !== a) return
             ui = ui.copy(connected = false, error = "Нет связи с ${ui.host}")
         }
+        publish()
+    }
+
+    /** Обновить шторку и виджет, если показываемое изменилось */
+    private fun publish(force: Boolean = false) {
+        val snap = Remote.snapshotOf(ui)
+        if (!force && snap == lastSnapshot) return
+        lastSnapshot = snap
+        Remote.publish(getApplication(), snap)
+    }
+
+    fun setNotify(on: Boolean) {
+        Remote.setNotifyEnabled(getApplication(), on)
+        ui = ui.copy(notify = on)
+        if (on) publish(force = true)
+    }
+
+    fun togglePower() {
+        if (ui.amp == null) return
+        runAction(if (ui.ampOn) "Выключение усилителя…" else "Включение усилителя…") { a ->
+            a.ampPower()
+            kotlinx.coroutines.delay(1500)   // усилитель сообщит новое состояние
+        }
     }
 
     // ---------------- действия ----------------
@@ -178,6 +209,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleMute() {
         val a = api ?: return
         if (ui.amp != null) {
+            if (!ui.ampOn) return
             viewModelScope.launch {
                 try {
                     a.ampMute()
@@ -202,6 +234,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     fun setVolume(v: Int) {
         val amp = ui.amp
         if (amp != null) {
+            if (!amp.power) return
             ui = ui.copy(localVolume = v.coerceIn(0, amp.max))
         } else {
             if (ui.usb == true) return
@@ -215,6 +248,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         if (!ui.connected) return
         val amp = ui.amp
         if (amp != null) {
+            if (!amp.power) return
             val cur = ui.localVolume ?: amp.pos
             setVolume(cur + if (delta > 0) 1 else -1)   // шаг усилителя (1 дБ)
             return
