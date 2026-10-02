@@ -205,7 +205,8 @@ private fun StatusLine(ui: UiState) {
 
 @Composable
 private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit) {
-    val enabled = ui.connected && ui.status.volumeAvailable
+    val usbFixed = ui.usb == true
+    val enabled = ui.connected && ui.status.volumeAvailable && !usbFixed
     val vol = ui.localVolume ?: ui.status.volume
     Row(verticalAlignment = Alignment.Bottom) {
         Column(Modifier.weight(1f)) {
@@ -251,7 +252,13 @@ private fun VolumeBlock(ui: UiState, onVolume: (Int) -> Unit, onMute: () -> Unit
             disabledInactiveTrackColor = Line,
         ),
     )
-    if (ui.connected && !ui.status.volumeAvailable) {
+    if (ui.connected && usbFixed) {
+        Text(
+            "USB → I2S: громкость фиксирована на 100% (bit-perfect). Регулируйте на ПК или в усилителе.",
+            color = Dim,
+            fontSize = 12.sp,
+        )
+    } else if (ui.connected && !ui.status.volumeAvailable) {
         Text("Регулировка громкости в этом режиме недоступна", color = Dim, fontSize = 12.sp)
     }
 }

@@ -109,8 +109,14 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun refresh() {
         val a = api ?: return
         try {
-            val st = a.status()
+            var st = a.status()
             val usb = a.usbMode()
+            // В режиме USB → I2S регулировка громкости в драйвере PureFox даёт искажения,
+            // поэтому держим там 100% (обработка в драйвере при 100% полностью отключена).
+            if (usb && st.volumeAvailable && st.volume in 0..99) {
+                a.setVolume(100)
+                st = st.copy(volume = 100)
+            }
             var rate: String? = null
             if (rateSupported) {
                 val raw = a.rate()
@@ -152,7 +158,10 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setUsb(on: Boolean) {
         if (ui.usb == on) return
-        runAction(if (on) "Включение USB → I2S…" else "Возврат в сеть…") { it.setUsb(on) }
+        runAction(if (on) "Включение USB → I2S…" else "Возврат в сеть…") { a ->
+            a.setUsb(on)
+            if (on) a.setVolume(100)   // bit-perfect: без цифровой регулировки в драйвере
+        }
     }
 
     fun toggleMute() {
@@ -169,13 +178,14 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Ползунок: двигаем локально, отправляем с небольшой задержкой */
     fun setVolume(v: Int) {
+        if (ui.usb == true) return
         ui = ui.copy(localVolume = v.coerceIn(0, 100))
         sendVolumeDebounced()
     }
 
     /** Аппаратные кнопки телефона */
     fun volumeStep(delta: Int) {
-        if (!ui.connected || !ui.status.volumeAvailable) return
+        if (!ui.connected || !ui.status.volumeAvailable || ui.usb == true) return
         val cur = ui.localVolume ?: ui.status.volume.takeIf { it >= 0 } ?: return
         setVolume(cur + delta)
     }
