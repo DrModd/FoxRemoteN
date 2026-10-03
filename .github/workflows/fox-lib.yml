@@ -1,0 +1,28 @@
+name: Fox lib (liblinebuf.so)
+
+on:
+  push:
+    paths: [ 'extras/src/**', '.github/workflows/fox-lib.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: ARM toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf
+      - name: Build
+        run: |
+          arm-linux-gnueabihf-gcc -shared -fPIC -O2 -fno-stack-protector -o liblinebuf.so extras/src/linebuf.c
+          arm-linux-gnueabihf-readelf -d -h liblinebuf.so | grep -E 'Flags|NEEDED'
+          arm-linux-gnueabihf-objdump -T liblinebuf.so
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: fox-lib
+          name: Fox lib
+          files: liblinebuf.so
