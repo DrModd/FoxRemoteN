@@ -150,6 +150,17 @@ class FoxApi(private val host: String) {
         )
     }
 
+    /** Текущий трек из необязательного track.php. null — нет данных или файла нет. */
+    suspend fun track(): Track? {
+        val j = try {
+            JSONObject(request("track.php"))
+        } catch (e: FoxException) {
+            if (e.code == 404) throw TrackNotInstalled() else throw e
+        }
+        val t = Track(j.optString("artist", ""), j.optString("title", ""), j.optString("album", ""))
+        return if (t.artist.isBlank() && t.title.isBlank()) null else t
+    }
+
     suspend fun setAmpVolume(pos: Int) {
         request("amp.php", mapOf("action" to "vol", "pos" to pos.toString()))
     }
@@ -168,10 +179,20 @@ class FoxApi(private val host: String) {
     }
 }
 
+/** Трек: исполнитель, название, альбом */
+data class Track(val artist: String, val title: String, val album: String) {
+    /** "Исполнитель — Название" */
+    val line: String get() = listOf(artist, title).filter { it.isNotBlank() }.joinToString(" — ")
+}
+
+class TrackNotInstalled : Exception("track.php не установлен")
+
+const val STOPPED = "нет сигнала"
+
 /** "192000 S32_LE" -> "192 kHz · 32 bit", "DSD128" -> "DSD128", "STOP" -> "нет сигнала" */
 fun formatRate(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
-    if (raw == "STOP") return "нет сигнала"
+    if (raw == "STOP") return STOPPED
     if (raw.startsWith("DSD")) return raw
     val parts = raw.split(' ')
     val hz = parts[0].toIntOrNull() ?: return raw

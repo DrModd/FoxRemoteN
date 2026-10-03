@@ -29,6 +29,7 @@
 #   st                полный статус (JSON)
 #   rate              текущая частота/формат
 #   ping              -> @PONG
+#   track             -> @TRACK <исполнитель>\t<название>  (пусто — нет трека)
 #   avol <pos> <max> <mute> <db> <power>
 #                     от усилителя (STM32): его состояние. Сохраняется
 #                     в /tmp/amp_state для приложения (amp.php). Ответа нет.
@@ -42,12 +43,16 @@
 #   @RATE ...          смена потока
 #   @SRC <id>          сменился плеер (с веб-страницы, из приложения, с усилителя)
 #   @USB on|off        включён/выключен USBtoI2S
+#   @TRACK ...         сменился трек (Qobuz, Spotify, AirPlay, MPD — см. pfmeta, track.php).
+#                      Текст в однобайтовой кодировке шрифта усилителя:
+#                      ASCII + кириллица А..Яа..я = 0x80..0xBF
 
 URL=http://127.0.0.1
 WGET="wget -q -T 60 -O -"
 PLAYERS=" naa raat mpd aprenderer aplayer apscream shairport lms spotify qobuz celmusper tidalconnect "
 
 oneline() { tr -d '\r\n'; }
+track_line() { wget -q -T 3 -O - "$URL/track.php?amp=1" 2>/dev/null | tr -d '\r\n'; }
 post()    { $WGET --post-data="$2" "$URL/$1" 2>/dev/null | oneline; }
 get()     { $WGET "$URL/$1" 2>/dev/null | oneline; }
 ok()      { echo "@OK $*"; }
@@ -131,6 +136,7 @@ do_cmd() {
             echo "$2 $3 $4 $5 ${6:-1} $(date +%s)" > /tmp/amp_state.tmp && mv /tmp/amp_state.tmp /tmp/amp_state
             ;;
         rate) echo "@RATE $(rate_now)" ;;
+        track) echo "@TRACK $(track_line)" ;;
         "")   ;;
         *)    err "$cmd" unknown ;;
     esac
@@ -140,9 +146,11 @@ do_cmd() {
 serve() {
     stty -echo 2>/dev/null          # не возвращать эхо в МК
     dmesg -n 1 2>/dev/null          # убрать сообщения ядра с консоли
+    # метаданные AirPlay (если установлен pfmeta; второй экземпляр сам не запустится)
+    [ -x /usr/bin/pfmeta ] && /usr/bin/pfmeta airplay </dev/null >/dev/null 2>&1 &
     # фоновый наблюдатель: смена потока и запросы приложения к усилителю
     (
-        last=""; n=0; m=0; last_svc=""; last_usb=""
+        last=""; n=0; m=0; k=0; last_svc=""; last_usb=""; last_np=""; last_tr=""
         while true; do
             if [ -f /tmp/amp_req ]; then
                 req=$(cat /tmp/amp_req); rm -f /tmp/amp_req
@@ -161,9 +169,20 @@ serve() {
                 if [ $m -ge 2 ]; then      # плеер и режим USB — раз в ~1 с
                     m=0
                     svc=$(sed -n 's/.*"active_service":"\([^"]*\)".*/\1/p' /tmp/system_status.json 2>/dev/null)
-                    [ -n "$svc" ] && [ "$svc" != "$last_svc" ] && echo "@SRC $svc" && last_svc=$svc
+                    if [ -n "$svc" ] && [ "$svc" != "$last_svc" ]; then
+                        echo "@SRC $svc"
+                        [ -n "$last_svc" ] && rm -f /tmp/nowplaying   # трек прошлого плеера
+                        last_svc=$svc
+                    fi
                     if [ -f /etc/usb_to_i2s.state ]; then u=on; else u=off; fi
                     [ "$u" != "$last_usb" ] && echo "@USB $u" && last_usb=$u
+                    # трек: при изменении /tmp/nowplaying, а MPD — опрос раз в ~2 с
+                    np=$(cat /tmp/nowplaying 2>/dev/null); k=$((k + 1))
+                    if [ "$np" != "$last_np" ] || { [ "$svc" = mpd ] && [ $k -ge 2 ]; } || [ $k -ge 10 ]; then
+                        k=0; last_np=$np
+                        tr_=$(track_line)
+                        [ "$tr_" != "$last_tr" ] && echo "@TRACK $tr_" && last_tr=$tr_
+                    fi
                 fi
             fi
             sleep 0.15

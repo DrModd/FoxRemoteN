@@ -67,7 +67,8 @@ object Remote {
             ui.status.service.isBlank() -> "Нет плеера"
             else -> playerLabel(ui.status.service)
         }
-        val line2 = listOfNotNull(ui.rate, volumeText(amp, ui.status, ui.usb)).joinToString("  ·  ")
+        val line2 = ui.track?.takeIf { amp?.power != false }?.line
+            ?: listOfNotNull(ui.rate, volumeText(amp, ui.status, ui.usb)).joinToString("  ·  ")
         return Snapshot(true, line1, line2, amp?.muted ?: ui.status.muted, amp?.power)
     }
 
@@ -81,7 +82,8 @@ object Remote {
             val usb = api.usbMode()
             val amp = try { api.amp() } catch (e: Exception) { null }
             val rate = try { formatRate(api.rate()) } catch (e: Exception) { null }
-            snapshotOf(UiState(host = h, connected = true, status = st, usb = usb, rate = rate, amp = amp))
+            val track = if (usb || rate == STOPPED) null else try { api.track() } catch (e: Exception) { null }
+            snapshotOf(UiState(host = h, connected = true, status = st, usb = usb, rate = rate, amp = amp, track = track))
         } catch (e: Exception) {
             Snapshot(false, "Fox Remote", "Нет связи с $h")
         }

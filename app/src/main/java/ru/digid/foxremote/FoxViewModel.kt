@@ -44,6 +44,7 @@ data class UiState(
     val localVolume: Int? = null,      // громкость, которую двигает пользователь (до ответа)
     val amp: AmpStatus? = null,        // усилитель на связи — громкость регулирует он
     val notify: Boolean = false,       // уведомление с кнопками в шторке
+    val track: Track? = null,          // текущий трек (track.php), null — нет
 )
 
 /** Громкость усилителя доступна (усилитель на связи и включён) */
@@ -66,6 +67,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     private var volumeJob: Job? = null
     private var rateSupported = true
     private var ampSupported = true
+    private var trackSupported = true
 
     init {
         if (ui.host.isBlank()) discover()
@@ -79,7 +81,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         api = if (h.isBlank()) null else FoxApi(h)
         rateSupported = true
         ampSupported = true
-        ui = ui.copy(host = h, connected = false, error = null, rate = null, amp = null)
+        trackSupported = true
+        ui = ui.copy(host = h, connected = false, error = null, rate = null, amp = null, track = null)
         viewModelScope.launch { refresh() }
     }
 
@@ -141,8 +144,16 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                 val raw = a.rate()
                 if (raw == null) rateSupported = false else rate = formatRate(raw)
             }
+            var track: Track? = null
+            if (trackSupported && !usb && rate != STOPPED) {
+                track = try {
+                    a.track()
+                } catch (e: TrackNotInstalled) {
+                    trackSupported = false; null
+                }
+            }
             if (api !== a) return  // пока ждали ответ, сменили адрес
-            ui = ui.copy(connected = true, status = st, usb = usb, rate = rate, amp = amp, error = null)
+            ui = ui.copy(connected = true, status = st, usb = usb, rate = rate, amp = amp, track = track, error = null)
         } catch (e: Exception) {
             if (api !== a) return
             ui = ui.copy(connected = false, error = "Нет связи с ${ui.host}")

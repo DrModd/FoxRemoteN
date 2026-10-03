@@ -171,6 +171,23 @@ private fun Display(ui: UiState) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        ui.track?.let { t ->
+            Spacer(Modifier.height(6.dp))
+            if (t.title.isNotBlank()) Text(
+                t.title,
+                color = Fg,
+                fontSize = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (t.artist.isNotBlank()) Text(
+                listOf(t.artist, t.album).filter { it.isNotBlank() }.joinToString("  ·  "),
+                color = Dim,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
