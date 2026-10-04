@@ -106,7 +106,7 @@ object Remote {
                         api.setVolume((st.volume + if (up) 2 else -2).coerceIn(0, 100))
                 }
             }
-            ACTION_MUTE -> if (amp != null) api.ampMute() else api.toggleMute()
+            ACTION_MUTE -> if (amp != null) api.ampMute() else if (api.status().volumeAvailable) api.toggleMute()
             ACTION_POWER -> if (amp != null) api.ampPower()
         }
         delay(300)   // усилитель подтверждает своим отчётом через ~0,1–0,2 с

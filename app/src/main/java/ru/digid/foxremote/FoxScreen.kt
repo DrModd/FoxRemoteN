@@ -119,7 +119,7 @@ private fun Header(ui: UiState, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "PUREFOX",
+            "DIGIFOX",
             color = Fg,
             fontSize = 18.sp,
             fontWeight = FontWeight.Light,
@@ -435,7 +435,7 @@ private fun SettingsDialog(
                     value = host,
                     onValueChange = { host = it },
                     singleLine = true,
-                    placeholder = { Text("192.168.1.50 или purefox.local", color = Dim) },
+                    placeholder = { Text("192.168.1.50 или digifox.local", color = Dim) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Fg,
                         unfocusedTextColor = Fg,

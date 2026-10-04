@@ -12,7 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** Плееры PureFox: id для handle_service.php и подпись на экране */
+/** Плееры DigiFox (PureFox): id для handle_service.php и подпись на экране */
 data class Player(val id: String, val label: String)
 
 val PLAYERS = listOf(
@@ -26,9 +26,10 @@ val PLAYERS = listOf(
     Player("mpd", "MPD"),
     Player("aplayer", "Веб-радио"),
     Player("apscream", "APScream"),
-    Player("celmusper", "Celmusper"),
-    Player("tidalconnect", "Tidal Connect"),
 )
+
+/** Имена Фокса по умолчанию, если mDNS-поиск ничего не дал */
+val DEFAULT_HOSTS = listOf("digifox.local", "purefox.local")
 
 fun playerLabel(id: String): String = PLAYERS.firstOrNull { it.id == id }?.label ?: id
 
@@ -95,8 +96,11 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
             if (found != null) {
                 setHost(found)
             } else if (api == null) {
-                // mDNS не нашёл — пробуем имя по умолчанию
-                setHost("purefox.local")
+                // mDNS не нашёл — пробуем имена по умолчанию: DigiFox, затем стоковый PureFox
+                val h = DEFAULT_HOSTS.firstOrNull { h ->
+                    try { FoxApi(h).status(); true } catch (e: Exception) { false }
+                } ?: DEFAULT_HOSTS.first()
+                setHost(h)
             } else {
                 ui = ui.copy(error = "Фокс в сети не найден")
             }
@@ -213,7 +217,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         if (ui.usb == on) return
         runAction(if (on) "Включение USB → I2S…" else "Возврат в сеть…") { a ->
             a.setUsb(on)
-            if (on) a.setVolume(100)   // bit-perfect: без цифровой регулировки в драйвере
+            // bit-perfect: без цифровой регулировки в драйвере (на DigiFox и так всегда 100%)
+            if (on && ui.status.volumeAvailable) a.setVolume(100)
         }
     }
 
@@ -231,6 +236,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
+        if (!ui.status.volumeAvailable) return   // DigiFox: громкость только в усилителе
         viewModelScope.launch {
             try {
                 val m = a.toggleMute()
@@ -248,7 +254,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
             if (!amp.power) return
             ui = ui.copy(localVolume = v.coerceIn(0, amp.max))
         } else {
-            if (ui.usb == true) return
+            if (ui.usb == true || !ui.status.volumeAvailable) return
             ui = ui.copy(localVolume = v.coerceIn(0, 100))
         }
         sendVolumeDebounced()

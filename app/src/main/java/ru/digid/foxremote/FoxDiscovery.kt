@@ -11,7 +11,8 @@ import kotlin.coroutines.resume
 
 /**
  * Поиск Фокса в сети по mDNS.
- * PureFox публикует службу "_mpd._tcp" с именем "PureFox MPD on <hostname>" —
+ * DigiFox и PureFox публикуют службу "_mpd._tcp" с именем
+ * "DigiFox MPD on <hostname>" / "PureFox MPD on <hostname>" —
  * по этому имени его легко отличить от других устройств.
  */
 class FoxDiscovery(context: Context) {
@@ -72,7 +73,8 @@ class FoxDiscovery(context: Context) {
 
                 @Suppress("DEPRECATION")
                 override fun onServiceFound(info: NsdServiceInfo) {
-                    if (!resolving && info.serviceName.contains("PureFox", ignoreCase = true)) {
+                    if (!resolving && (info.serviceName.contains("DigiFox", ignoreCase = true) ||
+                            info.serviceName.contains("PureFox", ignoreCase = true))) {
                         resolving = true
                         try {
                             nsd.resolveService(info, resolve)

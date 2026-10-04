@@ -1,6 +1,8 @@
 # Fox Remote
 
-Android-пульт для сетевого плеера на **PureFox** (Luckfox Pico Max).
+Android-пульт для сетевого плеера на **[DigiFox](https://github.com/DrModd/DigiFox)** (прошивка для DigiD D1 на базе PureFox, Luckfox Pico Max). Со стоковым **PureFox** тоже работает.
+
+На DigiFox всё нужное (`pfctl`, `pfmeta`, `amp.php`, `rate.php`, `track.php`) уже встроено в прошивку — разделы ниже про `extras/` нужны только для стокового PureFox.
 
 - поиск Фокса в сети (mDNS), либо ручной ввод адреса;
 - выбор плеера: Qobuz Connect, HQPlayer NAA, Roon Ready, AirPlay, Spotify, Squeezelite, UPnP, MPD, веб-радио…;
