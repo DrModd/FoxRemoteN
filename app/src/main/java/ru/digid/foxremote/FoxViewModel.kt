@@ -63,6 +63,18 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     private var lastSnapshot: Remote.Snapshot? = null
 
+    /** Страницы «Усилитель», «I2S», обновление — как в веб-интерфейсе */
+    val adv = FoxAdvanced(viewModelScope) { api }
+
+    var page by mutableStateOf(Page.MAIN)
+        private set
+
+    fun openPage(p: Page) {
+        page = p
+        adv.clearMsg()
+        adv.open(p)
+    }
+
     private var api: FoxApi? = ui.host.takeIf { it.isNotBlank() }?.let { FoxApi(it) }
     private var pollJob: Job? = null
     private var volumeJob: Job? = null
@@ -84,6 +96,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         ampSupported = true
         trackSupported = true
         ui = ui.copy(host = h, connected = false, error = null, rate = null, amp = null, track = null)
+        adv.reset()
+        adv.open(page)
         viewModelScope.launch { refresh() }
     }
 
@@ -117,12 +131,20 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                 delay(2000)
             }
         }
+        adv.open(page)
     }
 
     fun stopPolling() {
         pollJob?.cancel()
         pollJob = null
+        adv.close()
     }
+
+    fun resumePage() = adv.open(page)
+
+    fun rebootFox() = adv.reboot { ui = ui.copy(connected = false, error = "Фокс перезагружается…") }
+
+    fun updateFox() = adv.update { viewModelScope.launch { refresh() } }
 
     private suspend fun refresh() {
         val a = api ?: return

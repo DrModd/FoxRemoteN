@@ -1,5 +1,6 @@
 package ru.digid.foxremote
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,19 +50,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // Строгий монохром в духе классической hi-fi техники
-private val Bg = Color(0xFF0B0B0B)
-private val Fg = Color(0xFFEDEDED)
-private val Dim = Color(0xFF7A7A7A)
-private val Line = Color(0xFF2A2A2A)
-private val Faint = Color(0xFF444444)
+internal val Bg = Color(0xFF0B0B0B)
+internal val Fg = Color(0xFFEDEDED)
+internal val Dim = Color(0xFF7A7A7A)
+internal val Line = Color(0xFF2A2A2A)
+internal val Faint = Color(0xFF444444)
 
-private val Caption = TextStyle(color = Dim, fontSize = 11.sp, letterSpacing = 2.sp)
-private val Mono = FontFamily.Monospace
+internal val Caption = TextStyle(color = Dim, fontSize = 11.sp, letterSpacing = 2.sp)
+internal val Mono = FontFamily.Monospace
 
 @Composable
 fun FoxScreen(vm: FoxViewModel) {
+    BackHandler(enabled = vm.page != Page.MAIN) { vm.openPage(Page.MAIN) }
+    when (vm.page) {
+        Page.AMP -> AmpPage(vm)
+        Page.I2S -> I2sPage(vm)
+        Page.MAIN -> MainPage(vm)
+    }
+    LogDialog(vm)
+}
+
+@Composable
+private fun MainPage(vm: FoxViewModel) {
     val ui = vm.ui
     var showSettings by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -70,7 +84,18 @@ fun FoxScreen(vm: FoxViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        Header(ui, onClick = { showSettings = true })
+        Box {
+            Header(ui, onClick = { showMenu = true })
+            MainMenu(
+                expanded = showMenu,
+                onDismiss = { showMenu = false },
+                onAmp = { showMenu = false; vm.openPage(Page.AMP) },
+                onI2s = { showMenu = false; vm.openPage(Page.I2S) },
+                onUpdate = { showMenu = false; confirm = "update" },
+                onReboot = { showMenu = false; confirm = "reboot" },
+                onSettings = { showMenu = false; showSettings = true },
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Display(ui)
         Spacer(Modifier.height(8.dp))
@@ -98,6 +123,21 @@ fun FoxScreen(vm: FoxViewModel) {
         )
     }
 
+    when (confirm) {
+        "update" -> ConfirmDialog(
+            text = "Проверить и установить обновление DigiFox с GitHub? На время обновления звук остановится, потом Фокс перезагрузится.",
+            yes = "ОБНОВИТЬ",
+            onYes = { confirm = null; vm.updateFox() },
+            onNo = { confirm = null },
+        )
+        "reboot" -> ConfirmDialog(
+            text = "Перезагрузить Фокс?",
+            yes = "ПЕРЕЗАГРУЗИТЬ",
+            onYes = { confirm = null; vm.rebootFox() },
+            onNo = { confirm = null },
+        )
+    }
+
     if (showSettings) {
         SettingsDialog(
             ui = ui,
@@ -118,6 +158,12 @@ private fun Header(ui: UiState, onClick: () -> Unit) {
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(
+            "☰",
+            color = Fg,
+            fontSize = 18.sp,
+            modifier = Modifier.padding(end = 12.dp),
+        )
         Text(
             "DIGIFOX",
             color = Fg,
@@ -378,7 +424,7 @@ private fun PlayerGrid(ui: UiState, onSelect: (String) -> Unit) {
 
 /** Кнопка в стиле передней панели: рамка, активная — инверсная */
 @Composable
-private fun HifiButton(
+internal fun HifiButton(
     text: String,
     active: Boolean,
     enabled: Boolean,

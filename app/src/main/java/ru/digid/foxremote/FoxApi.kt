@@ -174,10 +174,178 @@ class FoxApi(private val host: String) {
         request("amp.php", mapOf("action" to "power"))
     }
 
+    // ---------------- DigiFox: усилитель, будильник, таймер ----------------
+
+    /** amp.php?full=1: настройки усилителя, версия, время, таймер сна, будильник */
+    suspend fun ampFull(): AmpFull {
+        val j = try {
+            JSONObject(request("amp.php?full=1"))
+        } catch (e: FoxException) {
+            if (e.code == 404) throw AmpNotInstalled() else throw e
+        }
+        val cfg = j.optJSONObject("cfg")?.let { c ->
+            AMP_KEYS.associateWith { c.optInt(it, -1) }
+        }
+        val al = j.optJSONObject("alarm")
+        return AmpFull(
+            present = j.optBoolean("present", false),
+            power = j.optBoolean("power", true),
+            cfg = cfg,
+            ver = if (j.isNull("ver")) null else j.optString("ver", "").ifBlank { null },
+            tz = j.optString("tz", "MSK-3"),
+            now = j.optString("now", ""),
+            timeOk = j.optBoolean("time_ok", true),
+            sleepLeft = j.optInt("sleep_left", 0),
+            alarm = Alarm(
+                on = al?.optBoolean("on", false) ?: false,
+                time = al?.optString("time", "07:00") ?: "07:00",
+                days = al?.optString("days", "12345") ?: "12345",
+                src = al?.optString("src", "keep") ?: "keep",
+                vol = al?.optInt("vol", -30) ?: -30,
+            ),
+        )
+    }
+
+    suspend fun ampSet(key: String, value: Int) {
+        request("amp.php", mapOf("action" to "set", "key" to key, "val" to value.toString()))
+    }
+
+    /** Таймер сна, минут; 0 — отменить */
+    suspend fun sleepTimer(min: Int) {
+        request("amp.php", mapOf("action" to "sleep", "min" to min.toString()))
+    }
+
+    suspend fun saveAlarm(a: Alarm) {
+        request(
+            "amp.php", mapOf(
+                "action" to "alarm", "on" to if (a.on) "1" else "0", "time" to a.time,
+                "days" to a.days, "src" to a.src, "vol" to a.vol.toString(),
+            )
+        )
+    }
+
+    suspend fun setTz(tz: String) {
+        request("amp.php", mapOf("action" to "tz", "tz" to tz))
+    }
+
+    // ---------------- DigiFox: I2S и пересчёт частоты ----------------
+
+    suspend fun i2s(): I2sStatus {
+        val j = JSONObject(request("handle_i2s.php?action=getStatus"))
+        return I2sStatus(
+            mode = j.optString("mode", ""),
+            mclk = j.optString("mclk", ""),
+            submode = j.optString("submode", "std"),
+            pcmSwap = j.optString("pcm_swap", "0") == "1",
+            dsdSwap = j.optString("dsd_swap", "0") == "1",
+            freqSwap = j.optString("freq_swap", "0") == "1",
+        )
+    }
+
+    /** Одна настройка I2S, как кнопка на странице: mode/mclk/submode/pcm_swap/dsd_swap/freq_swap */
+    suspend fun i2sSet(key: String, value: String) {
+        try {
+            request("handle_i2s.php", mapOf(key to value), readTimeoutMs = 60_000)
+        } catch (e: FoxException) {
+            throw when (e.code) {
+                409 -> FoxException(0, "Фокс занят переключением звука, повторите через пару секунд")
+                403 -> FoxException(0, "В режиме USB → I2S доступен только STD")
+                else -> e
+            }
+        }
+    }
+
+    /** Пересчёт частоты: "ak4137" | "fox"; ak — есть ли AK4137 (null — неизвестно). 404 — старая прошивка */
+    suspend fun src(): SrcMode? = try {
+        val j = JSONObject(request("src.php"))
+        SrcMode(j.optString("mode", "ak4137"), if (j.isNull("ak")) null else j.optBoolean("ak"))
+    } catch (e: FoxException) {
+        if (e.code == 404) null else throw e
+    }
+
+    suspend fun setSrc(mode: String) {
+        request("src.php", mapOf("mode" to mode), readTimeoutMs = 60_000)
+    }
+
+    // ---------------- система ----------------
+
+    suspend fun reboot() {
+        request("reboot.php", mapOf("x" to "1"))
+    }
+
+    /** Обновление прошивки Фокса с GitHub: журнал построчно (run_update.php) */
+    suspend fun runUpdate(onLine: (String) -> Unit) = stream("run_update.php", null, onLine)
+
+    /** Прошивка усилителя через Фокс (amp_flash.php): журнал построчно */
+    suspend fun flashAmp(name: String, data: ByteArray, onLine: (String) -> Unit) =
+        stream("amp_flash.php", name to data, onLine)
+
+    /** Долгий запрос с построчным ответом; file — multipart-поле "fw" */
+    private suspend fun stream(
+        path: String,
+        file: Pair<String, ByteArray>?,
+        onLine: (String) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val conn = URL("http://$host/$path").openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 3000
+            conn.readTimeout = 600_000
+            conn.useCaches = false
+            if (file != null) {
+                val b = "----digifox" + System.nanoTime()
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$b")
+                val head = "--$b\r\nContent-Disposition: form-data; name=\"fw\"; filename=\"${file.first}\"\r\n" +
+                        "Content-Type: application/octet-stream\r\n\r\n"
+                conn.outputStream.use {
+                    it.write(head.toByteArray())
+                    it.write(file.second)
+                    it.write("\r\n--$b--\r\n".toByteArray())
+                }
+            }
+            val code = conn.responseCode
+            val st = if (code in 200..299) conn.inputStream else conn.errorStream
+            st?.bufferedReader()?.use { r ->
+                while (true) {
+                    val l = r.readLine() ?: break
+                    withContext(Dispatchers.Main) { onLine(l) }
+                }
+            }
+            if (code !in 200..299) throw FoxException(code, "")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     companion object {
         fun parsePercent(s: String): Int = s.filter { it.isDigit() }.toIntOrNull() ?: -1
     }
 }
+
+val AMP_KEYS = listOf("filter", "delay", "dsdgain", "standby", "autoon", "mode")
+
+/** Будильник (amp.php: /etc/digifox/alarm.conf). days — "12345" (1 = пн). vol — дБ */
+data class Alarm(val on: Boolean, val time: String, val days: String, val src: String, val vol: Int)
+
+data class AmpFull(
+    val present: Boolean,
+    val power: Boolean,
+    val cfg: Map<String, Int>?,     // null — усилитель ещё не прислал настройки
+    val ver: String?,
+    val tz: String,
+    val now: String,
+    val timeOk: Boolean,
+    val sleepLeft: Int,             // секунд до выключения, 0 — таймер не взведён
+    val alarm: Alarm,
+)
+
+data class I2sStatus(
+    val mode: String, val mclk: String, val submode: String,
+    val pcmSwap: Boolean, val dsdSwap: Boolean, val freqSwap: Boolean,
+)
+
+data class SrcMode(val mode: String, val ak: Boolean?)
 
 /** Трек: исполнитель, название, альбом */
 data class Track(val artist: String, val title: String, val album: String) {
