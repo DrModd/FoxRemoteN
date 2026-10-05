@@ -119,6 +119,21 @@ private fun MainPage(vm: FoxViewModel) {
         Text("ПЛЕЕРЫ", style = Caption)
         Spacer(Modifier.height(8.dp))
         PlayerGrid(ui, onSelect = vm::selectPlayer)
+        // свои веб-страницы APlayer (станции) и APrenderer — работают, пока плеер запущен
+        val uiPort = mapOf("aplayer" to 7778, "aprenderer" to 7779)[ui.status.service]
+        if (ui.usb == false && uiPort != null && ui.host.isNotBlank()) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Spacer(Modifier.height(8.dp))
+            HifiButton(
+                if (uiPort == 7778) "СТАНЦИИ ВЕБ-РАДИО ↗" else "НАСТРОЙКИ UPnP-РЕНДЕРЕРА ↗",
+                false, true, Modifier.fillMaxWidth(),
+            ) {
+                val host = ui.host.substringBefore(':')
+                try {
+                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("http://$host:$uiPort/")))
+                } catch (_: Exception) {}
+            }
+        }
         Spacer(Modifier.height(20.dp))
         Text(
             "Кнопки громкости телефона управляют громкостью Фокса",
