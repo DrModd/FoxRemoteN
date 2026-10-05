@@ -190,6 +190,7 @@ class FoxApi(private val host: String) {
         return AmpFull(
             present = j.optBoolean("present", false),
             power = j.optBoolean("power", true),
+            max = j.optInt("max", 80),
             cfg = cfg,
             ver = if (j.isNull("ver")) null else j.optString("ver", "").ifBlank { null },
             tz = j.optString("tz", "MSK-3"),
@@ -332,7 +333,7 @@ class FoxApi(private val host: String) {
     }
 }
 
-val AMP_KEYS = listOf("filter", "delay", "dsdgain", "standby", "autoon", "mode")
+val AMP_KEYS = listOf("filter", "delay", "dsdgain", "standby", "autoon", "mode", "vmax", "von")
 
 /** Будильник (amp.php: /etc/digifox/alarm.conf). days — "12345" (1 = пн). vol — дБ */
 data class Alarm(val on: Boolean, val time: String, val days: String, val src: String, val vol: Int)
@@ -340,7 +341,8 @@ data class Alarm(val on: Boolean, val time: String, val days: String, val src: S
 data class AmpFull(
     val present: Boolean,
     val power: Boolean,
-    val cfg: Map<String, Int>?,     // null — усилитель ещё не прислал настройки
+    val max: Int,                   // шкала громкости усилителя (положение max = 0 dB)
+    val cfg: Map<String, Int>?,     // vmax/von = -1 — прошивка усилителя до 1.3     // null — усилитель ещё не прислал настройки
     val ver: String?,
     val tz: String,
     val now: String,

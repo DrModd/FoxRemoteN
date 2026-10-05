@@ -309,6 +309,29 @@ internal fun AmpPage(vm: FoxViewModel) {
             Choice(listOf("0" to "ВЫКЛ", "1" to "ВКЛ"), cur("autoon"), can) { vm.adv.ampSet("autoon", it.toInt()) }
         }
 
+        // ---- пределы громкости (прошивка усилителя 1.3+)
+        val volOk = cfg != null && (cfg["vmax"] ?: -1) >= 0
+        Panel("ГРОМКОСТЬ") {
+            fun dbOf(k: String): String {
+                val pos = cfg?.get(k) ?: 0
+                return if (pos <= 0) "0" else (pos - amp.max).toString()
+            }
+            fun send(k: String, db: String) {
+                val d = db.toInt()
+                vm.adv.ampSet(k, if (d == 0) 0 else amp.max + d)
+            }
+            val vmaxOpts = listOf("0" to "Без предела") + listOf(-3, -6, -10, -15, -20, -25, -30).map { "$it" to "−${-it} dB" }
+            val vonOpts = listOf("0" to "Как была") + listOf(-10, -15, -20, -25, -30, -35, -40).map { "$it" to "−${-it} dB" }
+            Label("Предел громкости")
+            Picker(vmaxOpts, dbOf("vmax"), volOk && can) { send("vmax", it) }
+            Label("При включении не громче")
+            Picker(vonOpts, dbOf("von"), volOk && can) { send("von", it) }
+            Hint(
+                if (cfg != null && !volOk) "Нужна прошивка усилителя 1.3 или новее (раздел «Прошивка усилителя» ниже)."
+                else "Предел — громче регулятор, пульт и приложение не дадут. При включении усилитель убавит громкость до заданной, если она была выше."
+            )
+        }
+
         // ---- таймер сна
         val left = amp.sleepLeft
         Panel("ТАЙМЕР СНА", if (left > 0) "выключится через ${(left + 59) / 60} мин" else "выключен") {
