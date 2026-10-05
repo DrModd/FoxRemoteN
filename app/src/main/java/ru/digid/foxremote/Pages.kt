@@ -445,7 +445,12 @@ internal fun AmpPage(vm: FoxViewModel) {
                 }
             }
         }
+        var askBuiltin by remember { mutableStateOf(false) }
         Panel("ПРОШИВКА УСИЛИТЕЛЯ", amp.ver?.let { "версия $it" } ?: if (amp.present) "версия до 1.1" else null) {
+            if (amp.fwUpdate && amp.fwBuiltin != null) {
+                HifiButton("ОБНОВИТЬ УСИЛИТЕЛЬ ДО ${amp.fwBuiltin}", true, !st.logRunning, Modifier.fillMaxWidth()) { askBuiltin = true }
+                Spacer(Modifier.height(8.dp))
+            }
             HifiButton(
                 fw?.let { "${it.first} · ${it.second.size / 1024} КБ" } ?: "ВЫБРАТЬ ФАЙЛ .BIN…",
                 false, !st.logRunning, Modifier.fillMaxWidth(),
@@ -456,6 +461,12 @@ internal fun AmpPage(vm: FoxViewModel) {
             if (fw != null && !okSize) Hint("Это не похоже на прошивку усилителя: нужен .bin от 4 до 62 КБ.")
             Hint("Файл Test_i2c.bin из папки Debug проекта в STM32CubeIDE. Настройки и коды пульта сохранятся. Во время прошивки усилитель выключен.")
         }
+        if (askBuiltin) ConfirmDialog(
+            text = "Обновить прошивку усилителя до ${amp.fwBuiltin}? Около минуты усилитель будет выключен.",
+            yes = "ОБНОВИТЬ",
+            onYes = { askBuiltin = false; vm.adv.flashAmpBuiltin() },
+            onNo = { askBuiltin = false },
+        )
         if (askFlash) ConfirmDialog(
             text = "Прошить усилитель файлом ${fw?.first}? Около минуты усилитель будет выключен.",
             yes = "ПРОШИТЬ",

@@ -123,6 +123,22 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
         it.saveAlarm(a)
     }
 
+    fun flashAmpBuiltin() {
+        val a = apiOf() ?: return
+        if (st.logRunning) return
+        scope.launch {
+            st = st.copy(logTitle = "Прошивка усилителя", log = "Прошивка из DigiFox…\n", logRunning = true)
+            try {
+                a.flashAmpBuiltin { l -> st = st.copy(log = st.log + l + "\n") }
+            } catch (e: Exception) {
+                st = st.copy(log = st.log + "\nОшибка: ${e.message}\n")
+            } finally {
+                st = st.copy(logRunning = false)
+                load(Page.AMP)
+            }
+        }
+    }
+
     fun flashAmp(name: String, data: ByteArray) {
         val a = apiOf() ?: return
         if (st.logRunning) return

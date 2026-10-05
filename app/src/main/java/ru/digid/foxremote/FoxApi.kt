@@ -193,6 +193,8 @@ class FoxApi(private val host: String) {
             max = j.optInt("max", 80),
             cfg = cfg,
             ver = if (j.isNull("ver")) null else j.optString("ver", "").ifBlank { null },
+            fwBuiltin = if (j.isNull("fw_builtin")) null else j.optString("fw_builtin", "").ifBlank { null },
+            fwUpdate = j.optBoolean("fw_update", false),
             tz = j.optString("tz", "MSK-3"),
             now = j.optString("now", ""),
             timeOk = j.optBoolean("time_ok", true),
@@ -290,18 +292,28 @@ class FoxApi(private val host: String) {
     suspend fun flashAmp(name: String, data: ByteArray, onLine: (String) -> Unit) =
         stream("amp_flash.php", name to data, onLine)
 
+    /** Прошивка усилителя, встроенная в DigiFox */
+    suspend fun flashAmpBuiltin(onLine: (String) -> Unit) =
+        stream("amp_flash.php", null, onLine, form = "builtin=1")
+
     /** Долгий запрос с построчным ответом; file — multipart-поле "fw" */
     private suspend fun stream(
         path: String,
         file: Pair<String, ByteArray>?,
         onLine: (String) -> Unit,
+        form: String? = null,
     ) = withContext(Dispatchers.IO) {
         val conn = URL("http://$host/$path").openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 3000
             conn.readTimeout = 600_000
             conn.useCaches = false
-            if (file != null) {
+            if (form != null) {
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                conn.outputStream.use { it.write(form.toByteArray()) }
+            } else if (file != null) {
                 val b = "----digifox" + System.nanoTime()
                 conn.requestMethod = "POST"
                 conn.doOutput = true
@@ -344,6 +356,8 @@ data class AmpFull(
     val max: Int,                   // шкала громкости усилителя (положение max = 0 dB)
     val cfg: Map<String, Int>?,     // vmax/von = -1 — прошивка усилителя до 1.3     // null — усилитель ещё не прислал настройки
     val ver: String?,
+    val fwBuiltin: String? = null,  // версия прошивки усилителя внутри DigiFox
+    val fwUpdate: Boolean = false,  // она новее установленной
     val tz: String,
     val now: String,
     val timeOk: Boolean,
