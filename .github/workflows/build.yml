@@ -23,7 +23,17 @@ jobs:
           gradle-version: "8.9"
 
       - name: Build
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # Ошибки компиляции — в аннотации (их видно без доступа к журналу)
+      - name: Report errors
+        if: failure()
+        run: |
+          grep -E "^e: |What went wrong|error:" build.log | head -40 | while IFS= read -r l; do
+            echo "::error::${l}"
+          done
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk FoxRemote.apk
