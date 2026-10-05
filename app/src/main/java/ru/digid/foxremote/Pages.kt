@@ -206,8 +206,8 @@ private fun Choice(
     options: List<Pair<String, String>>,   // значение -> подпись
     current: String?,
     enabled: Boolean,
-    onPick: (String) -> Unit,
     disabled: Set<String> = emptySet(),
+    onPick: (String) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { (v, label) ->
@@ -489,9 +489,8 @@ internal fun I2sPage(vm: FoxViewModel) {
             Panel("ПЕРЕСЧЁТ ЧАСТОТЫ", name) {
                 Choice(
                     listOf("ak4137" to "AK4137", "fox" to "ФОКС"), src?.mode, can && src != null,
-                    { vm.adv.setSrc(it) },
                     disabled = if (src?.ak == false) setOf("ak4137") else emptySet(),
-                )
+                ) { vm.adv.setSrc(it) }
                 Hint("AK4137 — Фокс отдаёт звук как есть, частоту пересчитывает AK4137 в усилителе. ФОКС — Фокс сам переводит всё в PCM 192 кГц / 32 бит: PCM через soxr, DSD64–DSD256 через дециматор; DSD512 в этом режиме не поддерживается. Переключение перезапускает плеер.")
             }
         }
