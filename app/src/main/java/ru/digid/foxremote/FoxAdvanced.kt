@@ -152,6 +152,10 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
 
     fun setSrc(mode: String) = act(Page.I2S, "Переключаю, плеер перезапускается…") { it.setSrc(mode) }
 
+    fun setSrcFilter(key: String, value: String) = act(Page.I2S, "Применяю…", "Слышно через секунду") {
+        it.setSrcFilter(key, value)
+    }
+
     // ---------------- система ----------------
 
     fun reboot(after: () -> Unit) {

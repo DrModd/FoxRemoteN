@@ -491,6 +491,16 @@ internal fun I2sPage(vm: FoxViewModel) {
                     listOf("ak4137" to "AK4137", "fox" to "ФОКС"), src?.mode, can && src != null,
                     disabled = if (src?.ak == false) setOf("ak4137") else emptySet(),
                 ) { vm.adv.setSrc(it) }
+                val f = src?.filter
+                if (src?.mode == "fox" && f != null) {
+                    Label("Фаза фильтра")
+                    Choice(listOf("lin" to "ЛИНЕЙНАЯ", "int" to "ПРОМЕЖ.", "min" to "МИНИМАЛ."), f.phase, can) { vm.adv.setSrcFilter("phase", it) }
+                    Label("Срез")
+                    Choice(listOf("steep" to "КРУТОЙ", "std" to "ОБЫЧНЫЙ", "slow" to "ПОЛОГИЙ"), f.rolloff, can) { vm.adv.setSrcFilter("rolloff", it) }
+                    Label("Запас по уровню")
+                    Choice(listOf("0" to "0 dB", "-3" to "−3 dB"), f.gain, can) { vm.adv.setSrcFilter("gain", it) }
+                    Hint("Слышно примерно через секунду. Минимальная фаза — без «звона» перед атакой (как SHORT у AK4137). Пологий срез — мягче на самом верху (как SLOW). Запас −3 dB убирает перегрузку пиков между отсчётами; громкость добирается усилителем.")
+                }
                 Hint("AK4137 — Фокс отдаёт звук как есть, частоту пересчитывает AK4137 в усилителе. ФОКС — Фокс сам переводит всё в PCM 192 кГц / 32 бит: PCM через soxr, DSD64–DSD256 через дециматор; DSD512 в этом режиме не поддерживается. Переключение перезапускает плеер.")
             }
         }

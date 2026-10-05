@@ -258,9 +258,18 @@ class FoxApi(private val host: String) {
     /** Пересчёт частоты: "ak4137" | "fox"; ak — есть ли AK4137 (null — неизвестно). 404 — старая прошивка */
     suspend fun src(): SrcMode? = try {
         val j = JSONObject(request("src.php"))
-        SrcMode(j.optString("mode", "ak4137"), if (j.isNull("ak")) null else j.optBoolean("ak"))
+        val f = j.optJSONObject("filter")
+        SrcMode(
+            j.optString("mode", "ak4137"), if (j.isNull("ak")) null else j.optBoolean("ak"),
+            f?.let { SrcFilter(it.optString("phase", "lin"), it.optString("rolloff", "std"), it.optString("gain", "0")) },
+        )
     } catch (e: FoxException) {
         if (e.code == 404) null else throw e
+    }
+
+    /** Фильтр пересчёта: phase=lin|int|min, rolloff=std|steep|slow, gain=0|-3 */
+    suspend fun setSrcFilter(key: String, value: String) {
+        request("src.php", mapOf(key to value))
     }
 
     suspend fun setSrc(mode: String) {
@@ -345,7 +354,9 @@ data class I2sStatus(
     val pcmSwap: Boolean, val dsdSwap: Boolean, val freqSwap: Boolean,
 )
 
-data class SrcMode(val mode: String, val ak: Boolean?)
+data class SrcMode(val mode: String, val ak: Boolean?, val filter: SrcFilter? = null)
+
+data class SrcFilter(val phase: String, val rolloff: String, val gain: String)
 
 /** Трек: исполнитель, название, альбом */
 data class Track(val artist: String, val title: String, val album: String) {
