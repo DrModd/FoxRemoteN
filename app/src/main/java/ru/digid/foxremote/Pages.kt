@@ -1,5 +1,6 @@
 package ru.digid.foxremote
 
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,6 +66,9 @@ internal fun MainMenu(
     onI2s: () -> Unit,
     onUpdate: () -> Unit,
     onReboot: () -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+    onDiag: () -> Unit,
     onSettings: () -> Unit,
 ) {
     DropdownMenu(
@@ -81,6 +85,9 @@ internal fun MainMenu(
         item("Настройки I2S", onI2s)
         item("Обновление прошивки", onUpdate)
         item("Перезагрузить Фокс", onReboot)
+        item("Сохранить настройки в файл", onBackup)
+        item("Восстановить настройки из файла", onRestore)
+        item("Диагностика", onDiag)
         item("Адрес Фокса и уведомления", onSettings)
     }
 }
@@ -533,6 +540,11 @@ internal fun I2sPage(vm: FoxViewModel) {
                     Choice(listOf("steep" to "КРУТОЙ", "std" to "ОБЫЧНЫЙ", "slow" to "ПОЛОГИЙ"), f.rolloff, can) { vm.adv.setSrcFilter("rolloff", it) }
                     Label("Запас по уровню")
                     Choice(listOf("0" to "0 dB", "-3" to "−3 dB"), f.gain, can) { vm.adv.setSrcFilter("gain", it) }
+                    if (f.loudness != null) {
+                        Label("Тонкомпенсация")
+                        Choice(listOf("off" to "ВЫКЛ", "on" to "ВКЛ"), f.loudness, can) { vm.adv.setSrcFilter("loudness", it) }
+                        Hint("На тихой громкости ухо хуже слышит низ и верх. Тонкомпенсация поднимает их тем сильнее, чем тише стоит громкость усилителя: в верхних 10 дБ шкалы звук не меняется, на −40 дБ низ поднят на ~10 дБ, верх на ~3 дБ. Чтобы не было перегрузки, середина при этом тише — громкость чуть добавьте.")
+                    }
                     Hint("Слышно примерно через секунду. Минимальная фаза — без «звона» перед атакой (как SHORT у AK4137). Пологий срез — мягче на самом верху (как SLOW). Запас −3 dB убирает перегрузку пиков между отсчётами; громкость добирается усилителем.")
                 }
                 Hint("AK4137 — Фокс отдаёт звук как есть, частоту пересчитывает AK4137 в усилителе. ФОКС — Фокс сам переводит всё в PCM 192 кГц / 32 бит: PCM через soxr, DSD64–DSD256 через дециматор; DSD512 в этом режиме не поддерживается. Переключение перезапускает плеер.")
@@ -569,5 +581,93 @@ private fun SwitchRow(title: String, desc: String, on: Boolean, enabled: Boolean
         }
         Spacer(Modifier.width(8.dp))
         HifiButton(if (on) "ВКЛ" else "ВЫКЛ", on, enabled, Modifier.width(84.dp)) { onSet(!on) }
+    }
+}
+
+// ============================================================ резервная копия
+
+/** Сохранение / восстановление настроек: request = "save" | "restore" запускает выбор файла */
+@Composable
+internal fun BackupActions(vm: FoxViewModel, request: String?, onHandled: () -> Unit) {
+    val ctx = LocalContext.current
+    var pending by remember { mutableStateOf<ByteArray?>(null) }
+    val scope = rememberCoroutineScope()
+    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) vm.adv.saveBackup { b ->
+            ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(b) } ?: throw Exception("Не удалось открыть файл")
+        }
+    }
+    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            val data = withContext(Dispatchers.IO) {
+                try { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (e: Exception) { null }
+            }
+            pending = data
+        }
+    }
+    LaunchedEffect(request) {
+        when (request) {
+            "save" -> save.launch("digifox-settings-" + java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date()) + ".json")
+            "restore" -> open.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*"))
+        }
+        if (request != null) onHandled()
+    }
+    pending?.let { data ->
+        ConfirmDialog(
+            text = "Восстановить настройки из файла? Текущие настройки Фокса заменятся, затем он перезагрузится.",
+            yes = "ВОССТАНОВИТЬ",
+            onYes = { pending = null; vm.restoreFox(data) },
+            onNo = { pending = null },
+        )
+    }
+}
+
+// ============================================================ диагностика
+
+@Composable
+internal fun DiagPage(vm: FoxViewModel) {
+    val st = vm.adv.st
+    val ctx = LocalContext.current
+    PageFrame(vm, "ДИАГНОСТИКА") {
+        val d = st.diag
+        if (!st.diagSupported) {
+            Text("Прошивка Фокса без страницы диагностики — обновите DigiFox.", color = Dim, fontSize = 14.sp); return@PageFrame
+        }
+        if (d == null) {
+            Text("Загрузка…", color = Dim, fontSize = 14.sp); return@PageFrame
+        }
+        d.sections.forEach { (title, rows) ->
+            Panel(title) {
+                rows.forEach { (k, v) ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                        Text(k, color = Dim, fontSize = 13.sp, modifier = Modifier.weight(0.42f))
+                        Text(v, color = Fg, fontSize = 13.sp, modifier = Modifier.weight(0.58f))
+                    }
+                }
+            }
+        }
+        d.logs.forEach { (title, text) ->
+            Panel(title) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .border(1.dp, Line)
+                        .verticalScroll(rememberScrollState(Int.MAX_VALUE))
+                        .padding(8.dp)
+                ) {
+                    Text(text, fontFamily = Mono, fontSize = 10.sp, color = Fg)
+                }
+            }
+        }
+        HifiButton("ПОДЕЛИТЬСЯ ОТЧЁТОМ", false, true, Modifier.fillMaxWidth()) {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "DigiFox — диагностика")
+                putExtra(Intent.EXTRA_TEXT, d.text)
+            }
+            ctx.startActivity(Intent.createChooser(send, "Отчёт диагностики"))
+        }
+        Hint("Обновляется каждые 10 секунд. Отчёт — весь текст этой страницы, его можно приложить к вопросу о неисправности.")
     }
 }

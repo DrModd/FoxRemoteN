@@ -4,13 +4,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Страницы приложения — те же, что в веб-интерфейсе DigiFox */
-enum class Page { MAIN, AMP, I2S }
+enum class Page { MAIN, AMP, I2S, DIAG }
 
 /** Состояние страниц «Усилитель» и «I2S», обновления и прошивки */
 data class AdvState(
@@ -19,6 +21,8 @@ data class AdvState(
     val i2s: I2sStatus? = null,
     val src: SrcMode? = null,
     val srcSupported: Boolean = true,
+    val diag: Diag? = null,
+    val diagSupported: Boolean = true,
     val busy: String? = null,          // идёт действие на странице
     val msg: String? = null,           // последнее сообщение (ошибка или "Сохранено")
     val needReboot: Boolean = false,   // тактирование изменится после перезагрузки
@@ -51,7 +55,7 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
         pollJob = scope.launch {
             while (isActive) {
                 if (st.busy == null && !st.logRunning) load(page)
-                delay(if (page == Page.AMP) 3000 else 5000)
+                delay(when (page) { Page.AMP -> 3000L; Page.DIAG -> 10_000L; else -> 5000L })
             }
         }
     }
@@ -80,6 +84,13 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
                         s = if (m == null) s.copy(srcSupported = false) else s.copy(src = m)
                     }
                     st = s
+                }
+                Page.DIAG -> if (st.diagSupported) {
+                    st = try {
+                        st.copy(diag = a.diag())
+                    } catch (e: FoxException) {
+                        if (e.code == 404) st.copy(diagSupported = false) else throw e
+                    }
                 }
                 Page.MAIN -> {}
             }
@@ -201,6 +212,52 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
                 if (reboot) st = st.copy(log = st.log + "\nФокс перезагружается, приложение переподключится само.\n")
                 st = st.copy(logRunning = false)
                 after()
+            }
+        }
+    }
+
+    // ---------------- резервная копия ----------------
+
+    /** Скачать копию настроек с Фокса и отдать её на запись в файл (write — в потоке IO) */
+    fun saveBackup(write: (ByteArray) -> Unit) {
+        val a = apiOf() ?: return
+        if (st.logRunning) return
+        scope.launch {
+            st = st.copy(logTitle = "Резервная копия", log = "Получаю настройки с Фокса…\n", logRunning = true)
+            try {
+                val b = a.backup()
+                withContext(Dispatchers.IO) { write(b) }
+                st = st.copy(
+                    log = st.log + "Сохранено (${(b.size + 1023) / 1024} КБ).\n\nВ файле: тактирование I2S и MCLK, перестановки, " +
+                            "активный плеер, пересчёт частоты и его фильтр, тонкомпенсация, будильник, часовой пояс, " +
+                            "список веб-радио, настройки UPnP-рендерера.\n"
+                )
+            } catch (e: Exception) {
+                st = st.copy(log = st.log + "\nОшибка: ${e.message}\n")
+            } finally {
+                st = st.copy(logRunning = false)
+            }
+        }
+    }
+
+    /** Восстановить настройки из файла и перезагрузить Фокс */
+    fun restore(data: ByteArray, after: () -> Unit) {
+        val a = apiOf() ?: return
+        if (st.logRunning) return
+        scope.launch {
+            st = st.copy(logTitle = "Восстановление настроек", log = "Передаю файл (${(data.size + 1023) / 1024} КБ)…\n", logRunning = true)
+            var ok = false
+            try {
+                val from = a.restore(data)
+                st = st.copy(log = st.log + "Настройки восстановлены" + (from?.let { " (копия DigiFox $it)" } ?: "") +
+                        ".\nФокс перезагружается, приложение переподключится само.\n")
+                ok = true
+                try { a.reboot() } catch (_: Exception) {}
+            } catch (e: Exception) {
+                st = st.copy(log = st.log + "\nОшибка: ${e.message}\n")
+            } finally {
+                st = st.copy(logRunning = false)
+                if (ok) after()
             }
         }
     }

@@ -264,13 +264,18 @@ class FoxApi(private val host: String) {
         val f = j.optJSONObject("filter")
         SrcMode(
             j.optString("mode", "ak4137"), if (j.isNull("ak")) null else j.optBoolean("ak"),
-            f?.let { SrcFilter(it.optString("phase", "lin"), it.optString("rolloff", "std"), it.optString("gain", "0")) },
+            f?.let {
+                SrcFilter(
+                    it.optString("phase", "lin"), it.optString("rolloff", "std"), it.optString("gain", "0"),
+                    if (it.has("loudness")) it.optString("loudness", "off") else null,
+                )
+            },
         )
     } catch (e: FoxException) {
         if (e.code == 404) null else throw e
     }
 
-    /** Фильтр пересчёта: phase=lin|int|min, rolloff=std|steep|slow, gain=0|-3 */
+    /** Фильтр пересчёта: phase=lin|int|min, rolloff=std|steep|slow, gain=0|-3; loudness=on|off */
     suspend fun setSrcFilter(key: String, value: String) {
         request("src.php", mapOf(key to value))
     }
@@ -280,6 +285,53 @@ class FoxApi(private val host: String) {
     }
 
     // ---------------- система ----------------
+
+    /** Резервная копия настроек (backup.php): JSON целиком */
+    suspend fun backup(): ByteArray = withContext(Dispatchers.IO) {
+        val conn = URL("http://$host/backup.php").openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 3000
+            conn.readTimeout = 30_000
+            conn.useCaches = false
+            val code = conn.responseCode
+            if (code !in 200..299) throw FoxException(code, conn.errorStream?.bufferedReader()?.use { it.readText() }?.take(200) ?: "")
+            conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** Восстановить из копии; после этого нужна перезагрузка. Возвращает версию, из которой копия */
+    suspend fun restore(json: ByteArray): String? {
+        val text = json.toString(Charsets.UTF_8)
+        val r = try {
+            JSONObject(request("backup.php", mapOf("json" to text), readTimeoutMs = 60_000))
+        } catch (e: FoxException) {
+            val msg = try { JSONObject(e.message?.substringAfter(": ") ?: "").optString("error") } catch (x: Exception) { "" }
+            throw if (msg.isNotBlank()) FoxException(0, msg) else e
+        }
+        if (!r.optBoolean("ok", false)) throw FoxException(0, r.optString("error", "Ошибка восстановления"))
+        return if (r.isNull("from")) null else r.optString("from")
+    }
+
+    suspend fun diag(): Diag {
+        val j = JSONObject(request("diag.php?json=1", readTimeoutMs = 15_000))
+        val secs = j.optJSONArray("sections")
+        val sections = (0 until (secs?.length() ?: 0)).map { i ->
+            val s = secs!!.getJSONObject(i)
+            val rows = s.optJSONArray("rows")
+            s.optString("title") to (0 until (rows?.length() ?: 0)).map { k ->
+                val r = rows!!.getJSONArray(k)
+                r.optString(0) to r.optString(1)
+            }
+        }
+        val la = j.optJSONArray("logs")
+        val logs = (0 until (la?.length() ?: 0)).map { i ->
+            val l = la!!.getJSONObject(i)
+            l.optString("title") to l.optString("text")
+        }
+        return Diag(sections, logs, j.optString("text"))
+    }
 
     suspend fun reboot() {
         request("reboot.php", mapOf("x" to "1"))
@@ -372,7 +424,11 @@ data class I2sStatus(
 
 data class SrcMode(val mode: String, val ak: Boolean?, val filter: SrcFilter? = null)
 
-data class SrcFilter(val phase: String, val rolloff: String, val gain: String)
+/** loudness: "on" / "off", null — прошивка без тонкомпенсации */
+data class SrcFilter(val phase: String, val rolloff: String, val gain: String, val loudness: String? = null)
+
+/** Страница диагностики (diag.php?json=1) */
+data class Diag(val sections: List<Pair<String, List<Pair<String, String>>>>, val logs: List<Pair<String, String>>, val text: String)
 
 /** Трек: исполнитель, название, альбом */
 data class Track(val artist: String, val title: String, val album: String) {

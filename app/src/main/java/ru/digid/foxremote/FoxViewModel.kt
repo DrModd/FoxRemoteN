@@ -146,6 +146,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateFox() = adv.update { viewModelScope.launch { refresh() } }
 
+    fun restoreFox(data: ByteArray) = adv.restore(data) { ui = ui.copy(connected = false, error = "Фокс перезагружается…") }
+
     private suspend fun refresh() {
         val a = api ?: return
         try {

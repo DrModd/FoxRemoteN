@@ -65,6 +65,7 @@ fun FoxScreen(vm: FoxViewModel) {
     when (vm.page) {
         Page.AMP -> AmpPage(vm)
         Page.I2S -> I2sPage(vm)
+        Page.DIAG -> DiagPage(vm)
         Page.MAIN -> MainPage(vm)
     }
     LogDialog(vm)
@@ -76,6 +77,7 @@ private fun MainPage(vm: FoxViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }
+    var backupReq by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -93,6 +95,9 @@ private fun MainPage(vm: FoxViewModel) {
                 onI2s = { showMenu = false; vm.openPage(Page.I2S) },
                 onUpdate = { showMenu = false; confirm = "update" },
                 onReboot = { showMenu = false; confirm = "reboot" },
+                onBackup = { showMenu = false; backupReq = "save" },
+                onRestore = { showMenu = false; backupReq = "restore" },
+                onDiag = { showMenu = false; vm.openPage(Page.DIAG) },
                 onSettings = { showMenu = false; showSettings = true },
             )
         }
@@ -122,6 +127,8 @@ private fun MainPage(vm: FoxViewModel) {
             textAlign = TextAlign.Center,
         )
     }
+
+    BackupActions(vm, backupReq) { backupReq = null }
 
     when (confirm) {
         "update" -> ConfirmDialog(
