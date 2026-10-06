@@ -81,6 +81,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     private var rateSupported = true
     private var ampSupported = true
     private var trackSupported = true
+    private var failCount = 0           // подряд неудачных опросов
+    private var lastAutoFind = 0L       // когда последний раз искали Фокс сами
 
     init {
         if (ui.host.isBlank()) discover()
@@ -117,6 +119,22 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                 setHost(h)
             } else {
                 ui = ui.copy(error = "Фокс в сети не найден")
+            }
+        }
+    }
+
+    /** Тихий поиск Фокса по mDNS, если по сохранённому адресу он не отвечает */
+    private fun autoFind() {
+        val now = System.currentTimeMillis()
+        if (ui.discovering || now - lastAutoFind < 30_000) return
+        lastAutoFind = now
+        viewModelScope.launch {
+            ui = ui.copy(discovering = true)
+            val found = discovery.find(6000)
+            ui = ui.copy(discovering = false)
+            if (found != null && found != ui.host && !ui.connected) {
+                ui = ui.copy(error = "Фокс найден по новому адресу $found")
+                setHost(found)
             }
         }
     }
@@ -181,10 +199,14 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             if (api !== a) return  // пока ждали ответ, сменили адрес
+            failCount = 0
             ui = ui.copy(connected = true, status = st, usb = usb, rate = rate, amp = amp, track = track, error = null)
         } catch (e: Exception) {
             if (api !== a) return
             ui = ui.copy(connected = false, error = "Нет связи с ${ui.host}")
+            // Адрес мог смениться (DHCP выдал другой IP): после двух неудач подряд ищем Фокс
+            // по имени в сети (mDNS) — не чаще раза в 30 с, и не во время перезагрузки Фокса
+            if (++failCount >= 2 && adv.st.logTitle == null) autoFind()
         }
         publish()
     }
