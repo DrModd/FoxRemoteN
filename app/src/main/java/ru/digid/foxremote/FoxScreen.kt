@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -215,6 +216,62 @@ private fun Header(ui: UiState, onClick: () -> Unit) {
     }
 }
 
+/** Обложка по URL (без библиотек): последняя загруженная держится в памяти */
+@Composable
+private fun coverBitmap(url: String): androidx.compose.ui.graphics.ImageBitmap? {
+    val bmp by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(
+        CoverCache.get(url), url,
+    ) {
+        if (url.isBlank()) { value = null; return@produceState }
+        CoverCache.get(url)?.let { value = it; return@produceState }
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                c.connectTimeout = 5000; c.readTimeout = 8000
+                try {
+                    c.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
+                        ?.let { android.graphics.Bitmap.createScaledBitmap(it, 192, 192, true) }
+                } finally { c.disconnect() }
+            } catch (e: Exception) { null }
+        }?.asImageBitmap()?.also { CoverCache.put(url, it) }
+    }
+    return bmp
+}
+
+private object CoverCache {
+    private var url = ""
+    private var bmp: androidx.compose.ui.graphics.ImageBitmap? = null
+    fun get(u: String) = if (u.isNotBlank() && u == url) bmp else null
+    fun put(u: String, b: androidx.compose.ui.graphics.ImageBitmap) { url = u; bmp = b }
+}
+
+private fun mmss(ms: Long): String {
+    val s = ms / 1000
+    return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
+}
+
+/** Полоса позиции трека и время; досчитывается каждую секунду между опросами */
+@Composable
+private fun TrackProgress(t: Track) {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.LaunchedEffect(t) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val pos = t.posAt(now)
+    Spacer(Modifier.height(10.dp))
+    Box(Modifier.fillMaxWidth().height(3.dp).background(Line)) {
+        Box(Modifier.fillMaxWidth((pos.toFloat() / t.dur).coerceIn(0f, 1f)).height(3.dp).background(Fg))
+    }
+    Spacer(Modifier.height(4.dp))
+    Row(Modifier.fillMaxWidth()) {
+        Text(mmss(pos), color = Dim, fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.weight(1f))
+        Text(mmss(t.dur), color = Dim, fontFamily = Mono, fontSize = 11.sp)
+    }
+}
+
 @Composable
 private fun Display(ui: UiState) {
     val source = when {
@@ -241,20 +298,34 @@ private fun Display(ui: UiState) {
         )
         ui.track?.let { t ->
             Spacer(Modifier.height(6.dp))
-            if (t.title.isNotBlank()) Text(
-                t.title,
-                color = Fg,
-                fontSize = 16.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (t.artist.isNotBlank()) Text(
-                listOf(t.artist, t.album).filter { it.isNotBlank() }.joinToString("  ·  "),
-                color = Dim,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val art = coverBitmap(t.cover)
+                if (art != null) {
+                    androidx.compose.foundation.Image(
+                        art, null,
+                        modifier = Modifier.size(64.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    if (t.title.isNotBlank()) Text(
+                        t.title,
+                        color = Fg,
+                        fontSize = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (t.artist.isNotBlank()) Text(
+                        listOf(t.artist, t.album).filter { it.isNotBlank() }.joinToString("  ·  "),
+                        color = Dim,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (t.dur > 0) TrackProgress(t)
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

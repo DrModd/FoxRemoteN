@@ -157,7 +157,11 @@ class FoxApi(private val host: String) {
         } catch (e: FoxException) {
             if (e.code == 404) throw TrackNotInstalled() else throw e
         }
-        val t = Track(j.optString("artist", ""), j.optString("title", ""), j.optString("album", ""))
+        val t = Track(
+            j.optString("artist", ""), j.optString("title", ""), j.optString("album", ""),
+            cover = j.optString("cover", ""), dur = j.optLong("dur", 0), pos = j.optLong("pos", 0),
+            play = j.optBoolean("play", true), at = System.currentTimeMillis(),
+        )
         return if (t.artist.isBlank() && t.title.isBlank()) null else t
     }
 
@@ -430,10 +434,16 @@ data class SrcFilter(val phase: String, val rolloff: String, val gain: String, v
 /** Страница диагностики (diag.php?json=1) */
 data class Diag(val sections: List<Pair<String, List<Pair<String, String>>>>, val logs: List<Pair<String, String>>, val text: String)
 
-/** Трек: исполнитель, название, альбом */
-data class Track(val artist: String, val title: String, val album: String) {
+/** Трек: исполнитель, название, альбом; обложка (URL), длительность и позиция, мс (на момент at) */
+data class Track(
+    val artist: String, val title: String, val album: String,
+    val cover: String = "", val dur: Long = 0, val pos: Long = 0, val play: Boolean = true, val at: Long = 0,
+) {
     /** "Исполнитель — Название" */
     val line: String get() = listOf(artist, title).filter { it.isNotBlank() }.joinToString(" — ")
+
+    /** Позиция сейчас, мс */
+    fun posAt(now: Long): Long = (pos + if (play) now - at else 0).coerceIn(0, if (dur > 0) dur else Long.MAX_VALUE)
 }
 
 class TrackNotInstalled : Exception("track.php не установлен")
