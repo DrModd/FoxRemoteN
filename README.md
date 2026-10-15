@@ -1,6 +1,6 @@
 # Fox Remote
 
-Android-пульт для сетевого плеера на **[DigiFox](https://github.com/DrModd/DigiFox)** (прошивка для DigiD D1 на базе PureFox, Luckfox Pico Max). Со стоковым **PureFox** тоже работает.
+Android-пульт для сетевого плеера на **[DigiFox](https://github.com/DrModd/DigiFox)** (прошивка для DigiD D1 на базе PureFox, Luckfox Pico Max). Со стоковым **PureFox**, а также с **DigiNeo** (порт DigiFox на NanoPi NEO3) тоже работает.
 
 На DigiFox всё нужное (`pfctl`, `pfmeta`, `amp.php`, `rate.php`, `track.php`) уже встроено в прошивку — разделы ниже про `extras/` нужны только для стокового PureFox.
 
