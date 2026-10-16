@@ -27,6 +27,9 @@ data class AmpStatus(
 
 class AmpNotInstalled : Exception("amp.php not installed")
 
+data class RadioSection(val name: String, val count: Int)
+data class RadioStation(val name: String, val url: String, val fromPlaylist: Boolean)
+
 class FoxException(val code: Int, text: String) : Exception(if (code > 0) "HTTP $code: $text" else text)
 
 /**
@@ -163,6 +166,38 @@ class FoxApi(private val host: String) {
             play = j.optBoolean("play", true), at = System.currentTimeMillis(),
         )
         return if (t.artist.isBlank() && t.title.isBlank()) null else t
+    }
+
+    // ---------------- веб-радио (APlayer): radio_edit.php, radio.php ----------------
+
+    /** Разделы станций. 404 — прошивка Фокса без страницы «Радиостанции». */
+    suspend fun radioSections(): List<RadioSection> {
+        val a = org.json.JSONArray(request("radio_edit.php?api=sections"))
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            RadioSection(o.optString("name"), o.optInt("n"))
+        }
+    }
+
+    suspend fun radioStations(section: String): List<RadioStation> {
+        val j = JSONObject(request("radio_edit.php?api=stations&sec=" + URLEncoder.encode(section, "UTF-8")))
+        val a = j.optJSONArray("stations") ?: return emptyList()
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            RadioStation(o.optString("name"), o.optString("url"), o.optString("kind") == "m3u")
+        }
+    }
+
+    /** Включить станцию (Фокс сам переключится на веб-радио). null — ок, иначе причина. */
+    suspend fun radioPlay(section: String, name: String): String? {
+        val j = JSONObject(request("radio_edit.php", mapOf("op" to "play", "sec" to section, "name" to name), readTimeoutMs = 60_000))
+        return if (j.optBoolean("ok")) null else j.optString("msg", "ошибка")
+    }
+
+    /** Играющую станцию — в избранное (add) или из него. null — ок, иначе причина. */
+    suspend fun radioFavorite(add: Boolean): String? {
+        val r = request(if (add) "radio.php?fav=1" else "radio.php?unfav=1", readTimeoutMs = 15_000).trim()
+        return if (r.startsWith("OK")) null else r.removePrefix("ERR").trim().ifBlank { "ошибка" }
     }
 
     suspend fun setAmpVolume(pos: Int) {

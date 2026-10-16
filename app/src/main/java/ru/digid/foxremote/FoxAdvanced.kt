@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Страницы приложения — те же, что в веб-интерфейсе DigiFox */
-enum class Page { MAIN, AMP, I2S, DIAG }
+enum class Page { MAIN, AMP, I2S, DIAG, RADIO }
 
 /** Состояние страниц «Усилитель» и «I2S», обновления и прошивки */
 data class AdvState(
@@ -51,7 +51,7 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
     /** Опрос страницы, пока она открыта */
     fun open(page: Page) {
         pollJob?.cancel()
-        if (page == Page.MAIN) return
+        if (page == Page.MAIN || page == Page.RADIO) return   // радио грузит само
         pollJob = scope.launch {
             while (isActive) {
                 if (st.busy == null && !st.logRunning) load(page)
@@ -92,7 +92,7 @@ class FoxAdvanced(private val scope: CoroutineScope, private val apiOf: () -> Fo
                         if (e.code == 404) st.copy(diagSupported = false) else throw e
                     }
                 }
-                Page.MAIN -> {}
+                Page.MAIN, Page.RADIO -> {}
             }
         } catch (e: Exception) {
             st = st.copy(msg = "Нет связи с Фоксом")

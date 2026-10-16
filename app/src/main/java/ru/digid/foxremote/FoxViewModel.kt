@@ -76,6 +76,8 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var api: FoxApi? = ui.host.takeIf { it.isNotBlank() }?.let { FoxApi(it) }
+    /** Для экрана «Радио» */
+    fun foxApi(): FoxApi? = api
     private var pollJob: Job? = null
     private var volumeJob: Job? = null
     private var rateSupported = true

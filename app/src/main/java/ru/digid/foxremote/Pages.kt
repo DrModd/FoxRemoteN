@@ -69,6 +69,7 @@ internal fun MainMenu(
     onBackup: () -> Unit,
     onRestore: () -> Unit,
     onDiag: () -> Unit,
+    onRadio: () -> Unit,
     onSettings: () -> Unit,
 ) {
     DropdownMenu(
@@ -81,6 +82,7 @@ internal fun MainMenu(
             text = { Text(text, color = Fg, fontSize = 15.sp) },
             onClick = onClick,
         )
+        item("Радиостанции", onRadio)
         item("Усилитель, будильник, таймер", onAmp)
         item("Настройки I2S", onI2s)
         item("Обновление прошивки", onUpdate)

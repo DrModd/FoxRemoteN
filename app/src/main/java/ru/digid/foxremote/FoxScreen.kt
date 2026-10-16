@@ -67,6 +67,7 @@ fun FoxScreen(vm: FoxViewModel) {
         Page.AMP -> AmpPage(vm)
         Page.I2S -> I2sPage(vm)
         Page.DIAG -> DiagPage(vm)
+        Page.RADIO -> RadioPage(vm)
         Page.MAIN -> MainPage(vm)
     }
     LogDialog(vm)
@@ -99,6 +100,7 @@ private fun MainPage(vm: FoxViewModel) {
                 onBackup = { showMenu = false; backupReq = "save" },
                 onRestore = { showMenu = false; backupReq = "restore" },
                 onDiag = { showMenu = false; vm.openPage(Page.DIAG) },
+                onRadio = { showMenu = false; vm.openPage(Page.RADIO) },
                 onSettings = { showMenu = false; showSettings = true },
             )
         }
@@ -122,7 +124,10 @@ private fun MainPage(vm: FoxViewModel) {
         PlayerGrid(ui, onSelect = vm::selectPlayer)
         // свои веб-страницы APlayer (станции) и APrenderer — работают, пока плеер запущен
         val uiPort = mapOf("aplayer" to 7778, "aprenderer" to 7779)[ui.status.service]
-        if (ui.usb == false && uiPort != null && ui.host.isNotBlank()) {
+        if (ui.usb == false && ui.status.service == "aplayer") {
+            Spacer(Modifier.height(8.dp))
+            HifiButton("СТАНЦИИ", false, true, Modifier.fillMaxWidth()) { vm.openPage(Page.RADIO) }
+        } else if (ui.usb == false && uiPort != null && ui.host.isNotBlank()) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Spacer(Modifier.height(8.dp))
             HifiButton(
