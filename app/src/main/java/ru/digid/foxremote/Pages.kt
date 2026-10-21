@@ -70,6 +70,9 @@ internal fun MainMenu(
     onRestore: () -> Unit,
     onDiag: () -> Unit,
     onRadio: () -> Unit,
+    onYandex: () -> Unit,
+    onAppUpdate: () -> Unit,
+    appUpdate: String?,
     onSettings: () -> Unit,
 ) {
     DropdownMenu(
@@ -82,6 +85,7 @@ internal fun MainMenu(
             text = { Text(text, color = Fg, fontSize = 15.sp) },
             onClick = onClick,
         )
+        item("Яндекс Музыка", onYandex)
         item("Радиостанции", onRadio)
         item("Усилитель, будильник, таймер", onAmp)
         item("Настройки I2S", onI2s)
@@ -91,6 +95,7 @@ internal fun MainMenu(
         item("Восстановить настройки из файла", onRestore)
         item("Диагностика", onDiag)
         item("Адрес Фокса и уведомления", onSettings)
+        item(if (appUpdate != null) "Обновить приложение до $appUpdate ●" else "Обновление приложения", onAppUpdate)
     }
 }
 

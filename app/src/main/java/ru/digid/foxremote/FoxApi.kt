@@ -194,6 +194,16 @@ class FoxApi(private val host: String) {
         return if (j.optBoolean("ok")) null else j.optString("msg", "ошибка")
     }
 
+    // ---------------- Яндекс Музыка: yandex.php (ymusicd на Фоксе) ----------------
+
+    /** GET yandex.php?api=… — JSON-ответ. 404 — прошивка Фокса без Яндекс Музыки. */
+    suspend fun ymGet(query: String): JSONObject =
+        JSONObject(request("yandex.php?api=$query", readTimeoutMs = 40_000))
+
+    /** POST yandex.php op=… — {"ok":bool,"msg":…} */
+    suspend fun ymPost(params: Map<String, String>): JSONObject =
+        JSONObject(request("yandex.php", params, readTimeoutMs = 60_000))
+
     /** Играющую станцию — в избранное (add) или из него. null — ок, иначе причина. */
     suspend fun radioFavorite(add: Boolean): String? {
         val r = request(if (add) "radio.php?fav=1" else "radio.php?unfav=1", readTimeoutMs = 15_000).trim()

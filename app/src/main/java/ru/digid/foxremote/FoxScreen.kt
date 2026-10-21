@@ -68,6 +68,7 @@ fun FoxScreen(vm: FoxViewModel) {
         Page.I2S -> I2sPage(vm)
         Page.DIAG -> DiagPage(vm)
         Page.RADIO -> RadioPage(vm)
+        Page.YANDEX -> YandexPage(vm)
         Page.MAIN -> MainPage(vm)
     }
     LogDialog(vm)
@@ -78,6 +79,9 @@ private fun MainPage(vm: FoxViewModel) {
     val ui = vm.ui
     var showSettings by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showAppUpdate by remember { mutableStateOf(false) }
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { AppUpdate.checkQuietly(appCtx) }
     var confirm by remember { mutableStateOf<String?>(null) }
     var backupReq by remember { mutableStateOf<String?>(null) }
 
@@ -101,6 +105,9 @@ private fun MainPage(vm: FoxViewModel) {
                 onRestore = { showMenu = false; backupReq = "restore" },
                 onDiag = { showMenu = false; vm.openPage(Page.DIAG) },
                 onRadio = { showMenu = false; vm.openPage(Page.RADIO) },
+                onYandex = { showMenu = false; vm.openPage(Page.YANDEX) },
+                onAppUpdate = { showMenu = false; showAppUpdate = true },
+                appUpdate = AppUpdate.available,
                 onSettings = { showMenu = false; showSettings = true },
             )
         }
@@ -122,6 +129,10 @@ private fun MainPage(vm: FoxViewModel) {
         Text("ПЛЕЕРЫ", style = Caption)
         Spacer(Modifier.height(8.dp))
         PlayerGrid(ui, onSelect = vm::selectPlayer)
+        if (ui.usb == false) {
+            Spacer(Modifier.height(8.dp))
+            HifiButton("Яндекс Музыка", false, ui.host.isNotBlank(), Modifier.fillMaxWidth()) { vm.openPage(Page.YANDEX) }
+        }
         // свои веб-страницы APlayer (станции) и APrenderer — работают, пока плеер запущен
         val uiPort = mapOf("aplayer" to 7778, "aprenderer" to 7779)[ui.status.service]
         if (ui.usb == false && ui.status.service == "aplayer") {
@@ -175,6 +186,7 @@ private fun MainPage(vm: FoxViewModel) {
             onNotify = vm::setNotify,
         )
     }
+    if (showAppUpdate) AppUpdateDialog(onDismiss = { showAppUpdate = false })
 }
 
 @Composable

@@ -36,7 +36,13 @@ jobs:
           done
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk FoxRemote.apk
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk FoxRemote.apk
+          # версия для кнопки «Обновление приложения»: "<versionCode> <versionName>"
+          code=$(sed -n 's/.*versionCode *= *\([0-9]*\).*/\1/p' app/build.gradle.kts | head -1)
+          name=$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          echo "$code $name" > version.txt
+          cat version.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -52,4 +58,6 @@ jobs:
           tag_name: latest
           name: FoxRemote (последняя сборка)
           prerelease: true
-          files: FoxRemote.apk
+          files: |
+            FoxRemote.apk
+            version.txt
