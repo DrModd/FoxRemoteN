@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- иконка Fox Remote: D из логотипа DigiD и линия ШИМ -> синус (tools/gen_splash_nv.py --android) -->
+<!-- иконка Fox Remote: D из логотипа DigiD и линия ШИМ -> синус (tools/gen_splash_nv.py, ключ android) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
