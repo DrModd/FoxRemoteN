@@ -261,6 +261,28 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Режим: "net" — сеть в усилитель, "dac" — сеть во внешний USB-ЦАП, "usb" — USB → I2S */
+    fun setMode(mode: String) {
+        val dacOut = ui.status.alsa == "usb"
+        when (mode) {
+            "usb" -> setUsb(true)
+            "net" -> {
+                if (ui.usb == false && !dacOut) return
+                runAction("Возврат в сеть…") { a ->
+                    if (ui.usb == true) a.setUsb(false)
+                    if (dacOut) a.setOutput("i2s")
+                }
+            }
+            "dac" -> {
+                if (ui.usb == false && dacOut) return
+                runAction("Вывод в USB-ЦАП…") { a ->
+                    if (ui.usb == true) a.setUsb(false)
+                    a.setOutput("usb")
+                }
+            }
+        }
+    }
+
     fun setUsb(on: Boolean) {
         if (ui.usb == on) return
         runAction(if (on) "Включение USB → I2S…" else "Возврат в сеть…") { a ->

@@ -124,7 +124,7 @@ private fun MainPage(vm: FoxViewModel) {
         Spacer(Modifier.height(24.dp))
         Text("РЕЖИМ", style = Caption)
         Spacer(Modifier.height(8.dp))
-        ModeSwitch(ui, onUsb = vm::setUsb)
+        ModeSwitch(ui, onMode = vm::setMode)
         Spacer(Modifier.height(24.dp))
         Text("ПЛЕЕРЫ", style = Caption)
         Spacer(Modifier.height(8.dp))
@@ -491,22 +491,19 @@ private fun PowerRow(ui: UiState, onPower: () -> Unit) {
 }
 
 @Composable
-private fun ModeSwitch(ui: UiState, onUsb: (Boolean) -> Unit) {
+private fun ModeSwitch(ui: UiState, onMode: (String) -> Unit) {
     val enabled = ui.connected && ui.busy == null
+    val dacOut = ui.status.alsa == "usb"
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        HifiButton(
-            text = "СЕТЬ",
-            active = ui.usb == false,
-            enabled = enabled,
-            modifier = Modifier.weight(1f),
-            onClick = { onUsb(false) },
-        )
-        HifiButton(
-            text = "USB → I2S",
-            active = ui.usb == true,
-            enabled = enabled,
-            modifier = Modifier.weight(1f),
-            onClick = { onUsb(true) },
+        HifiButton("СЕТЬ", ui.usb == false && !dacOut, enabled, Modifier.weight(1f)) { onMode("net") }
+        HifiButton("USB-ЦАП", ui.usb == false && dacOut, enabled, Modifier.weight(1f)) { onMode("dac") }
+        HifiButton("USB → I2S", ui.usb == true, enabled, Modifier.weight(1f)) { onMode("usb") }
+    }
+    if (ui.usb == false && dacOut) {
+        Text(
+            if (ui.status.usbDac) "Сетевые плееры играют во внешний USB-ЦАП, усилитель молчит"
+            else "USB-ЦАП не подключён — подключите его к USB-порту Фокса (через OTG-переходник)",
+            color = Dim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
         )
     }
 }

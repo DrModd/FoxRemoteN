@@ -14,6 +14,7 @@ data class FoxStatus(
     val volume: Int = -1,              // 0..100, -1 = неизвестно
     val muted: Boolean = false,
     val volumeAvailable: Boolean = true,
+    val usbDac: Boolean = false,       // к USB-порту Фокса подключён внешний ЦАП
 )
 
 /** Громкость усилителя DigiD D1 (amp.php на Фоксе, связь через STM32) */
@@ -76,6 +77,7 @@ class FoxApi(private val host: String) {
             volume = parsePercent(j.optString("volume", "")),
             muted = j.optBoolean("muted", false),
             volumeAvailable = j.optBoolean("volume_control_available", true),
+            usbDac = j.optBoolean("usb_dac", false),
         )
     }
 
@@ -92,6 +94,12 @@ class FoxApi(private val host: String) {
             mapOf("action" to if (on) "enable" else "disable"),
             readTimeoutMs = 60_000,
         )
+        if (!r.contains("successfully")) throw FoxException(0, r.trim().take(200))
+    }
+
+    /** Выход сетевых плееров: "usb" — внешний USB-ЦАП, "i2s" — усилитель */
+    suspend fun setOutput(card: String) {
+        val r = request("handle_alsa.php", mapOf("card" to card), readTimeoutMs = 60_000)
         if (!r.contains("successfully")) throw FoxException(0, r.trim().take(200))
     }
 
