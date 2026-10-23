@@ -134,20 +134,22 @@ private fun MainPage(vm: FoxViewModel) {
             HifiButton("Яндекс Музыка", false, ui.host.isNotBlank(), Modifier.fillMaxWidth()) { vm.openPage(Page.YANDEX) }
         }
         // свои веб-страницы APlayer (станции) и APrenderer — работают, пока плеер запущен
-        val uiPort = mapOf("aplayer" to 7778, "aprenderer" to 7779)[ui.status.service]
+        // свои веб-страницы плееров: APrenderer (порт 7779) и настройки APScream (страница Фокса)
+        val uiLink = when (ui.status.service) {
+            "aprenderer" -> ":7779/" to "НАСТРОЙКИ UPnP-РЕНДЕРЕРА ↗"
+            "apscream" -> "/apscream_settings.php" to "НАСТРОЙКИ APSCREAM ↗"
+            else -> null
+        }
         if (ui.usb == false && ui.status.service == "aplayer") {
             Spacer(Modifier.height(8.dp))
             HifiButton("СТАНЦИИ", false, true, Modifier.fillMaxWidth()) { vm.openPage(Page.RADIO) }
-        } else if (ui.usb == false && uiPort != null && ui.host.isNotBlank()) {
+        } else if (ui.usb == false && uiLink != null && ui.host.isNotBlank()) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Spacer(Modifier.height(8.dp))
-            HifiButton(
-                if (uiPort == 7778) "СТАНЦИИ ВЕБ-РАДИО ↗" else "НАСТРОЙКИ UPnP-РЕНДЕРЕРА ↗",
-                false, true, Modifier.fillMaxWidth(),
-            ) {
-                val host = ui.host.substringBefore(':')
+            HifiButton(uiLink.second, false, true, Modifier.fillMaxWidth()) {
+                val host = if (uiLink.first.startsWith(":")) ui.host.substringBefore(':') else ui.host
                 try {
-                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("http://$host:$uiPort/")))
+                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("http://$host${uiLink.first}")))
                 } catch (_: Exception) {}
             }
         }
