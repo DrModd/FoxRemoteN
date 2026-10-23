@@ -160,11 +160,21 @@ internal fun YandexPage(vm: FoxViewModel) {
 
     val loggedIn = status?.let { it.optBoolean("token") && !it.optBoolean("bad_token") && it.optBoolean("daemon") } == true
 
+    // Яндекс не ответил (сеть, часы после загрузки Фокса) — вход цел, повторить позже
+    val offline = status?.optBoolean("offline") == true
+
     LaunchedEffect(Unit) { loadStatus() }
+    LaunchedEffect(status) {
+        if (status?.optBoolean("offline") != true) return@LaunchedEffect
+        msg = "Нет связи с Яндексом — повторяю…"
+        delay(10_000)
+        loadStatus()
+    }
 
     // главная — после входа
-    LaunchedEffect(loggedIn) {
-        if (!loggedIn) return@LaunchedEffect
+    LaunchedEffect(loggedIn, offline) {
+        if (!loggedIn || offline) return@LaunchedEffect
+        if (msg == "Нет связи с Яндексом — повторяю…") msg = null
         val a = vm.foxApi() ?: return@LaunchedEffect
         try { home = a.ymGet("home") } catch (_: Exception) { msg = "Не удалось загрузить главную" }
     }
