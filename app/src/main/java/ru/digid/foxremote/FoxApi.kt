@@ -176,6 +176,9 @@ class FoxApi(private val host: String) {
         return if (t.artist.isBlank() && t.title.isBlank()) null else t
     }
 
+    /** Кнопки плеера (player_ctl.php): toggle | next | prev -> "OK <плеер>" | "ERR <причина>" */
+    suspend fun playerCtl(cmd: String): String = request("player_ctl.php?cmd=$cmd", readTimeoutMs = 15000).trim()
+
     // ---------------- веб-радио (APlayer): radio_edit.php, radio.php ----------------
 
     /** Разделы станций. 404 — прошивка Фокса без страницы «Радиостанции». */

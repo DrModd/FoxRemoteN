@@ -2,6 +2,7 @@ package ru.digid.foxremote
 
 import android.app.Application
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -250,6 +251,33 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(busy = null)
                 refresh()
             }
+        }
+    }
+
+    /** ⏮ ⏯ ⏭ — тот плеер, что сейчас играет (MPD/Яндекс, APlayer, Roon, Qobuz) */
+    fun playerCtl(cmd: String) {
+        val a = api ?: return
+        viewModelScope.launch {
+            val r = try {
+                a.playerCtl(cmd)
+            } catch (e: FoxException) {
+                if (e.code == 404) "ERR old_fox" else "ERR ${e.message}"
+            } catch (e: Exception) {
+                "ERR ${e.message ?: "нет связи"}"
+            }
+            if (!r.startsWith("OK")) {
+                val why = r.removePrefix("ERR ").trim()
+                val msg = when {
+                    why == "old_fox" -> "Обновите прошивку Фокса (DigiFox 1.0.94 и новее)"
+                    why.startsWith("unsupported") -> "Этим плеером кнопки не управляют"
+                    why == "raat_no_control" -> "Roon не принял команду"
+                    why.startsWith("qobuz") -> "Qobuz не принял команду"
+                    else -> "Не удалось: $why"
+                }
+                Toast.makeText(getApplication(), msg, Toast.LENGTH_SHORT).show()
+            }
+            delay(700)
+            refresh()
         }
     }
 

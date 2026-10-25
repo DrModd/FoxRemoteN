@@ -112,7 +112,7 @@ private fun MainPage(vm: FoxViewModel) {
             )
         }
         Spacer(Modifier.height(16.dp))
-        Display(ui)
+        Display(ui, onCtl = vm::playerCtl)
         Spacer(Modifier.height(8.dp))
         StatusLine(ui)
         Spacer(Modifier.height(20.dp))
@@ -291,8 +291,11 @@ private fun TrackProgress(t: Track) {
     }
 }
 
+/** Плееры, которыми управляют кнопки ⏮ ⏯ ⏭ */
+private val CTL_PLAYERS = setOf("mpd", "aplayer", "raat", "qobuz")
+
 @Composable
-private fun Display(ui: UiState) {
+private fun Display(ui: UiState, onCtl: (String) -> Unit = {}) {
     val source = when {
         !ui.connected -> "—"
         ui.usb == true -> "USB → I2S"
@@ -345,6 +348,15 @@ private fun Display(ui: UiState) {
                 }
             }
             if (t.dur > 0) TrackProgress(t)
+        }
+        // Кнопки плеера: только у тех, что ими управляются (player_ctl.php на Фоксе)
+        if (ui.connected && ui.usb != true && ui.status.service in CTL_PLAYERS) {
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HifiButton("⏮", false, true, Modifier.weight(1f)) { onCtl("prev") }
+                HifiButton(if (ui.track?.play == true) "❚❚" else "▶", false, true, Modifier.weight(1f)) { onCtl("toggle") }
+                HifiButton("⏭", false, true, Modifier.weight(1f)) { onCtl("next") }
+            }
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
