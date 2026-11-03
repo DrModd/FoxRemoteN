@@ -16,12 +16,15 @@ import kotlin.coroutines.resume
  * "DigiNeo MPD on <hostname>" — по этому имени его легко отличить
  * от других устройств. (DigiNeo — порт DigiFox на NanoPi NEO3.)
  */
+/** Найденный Фокс: адрес ("192.168.1.50") и его имя в сети ("digifox.local", если известно) */
+data class FoxFound(val addr: String, val local: String?)
+
 class FoxDiscovery(context: Context) {
 
     private val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
 
-    /** Вернёт адрес для URL ("192.168.1.50") или null, если за отведённое время не нашли */
-    suspend fun find(timeoutMs: Long = 8000): String? = withTimeoutOrNull(timeoutMs) {
+    /** Вернёт адрес и имя .local или null, если за отведённое время не нашли */
+    suspend fun find(timeoutMs: Long = 8000): FoxFound? = withTimeoutOrNull(timeoutMs) {
         suspendCancellableCoroutine { cont ->
             var resolving = false
             var stopped = false
@@ -38,7 +41,7 @@ class FoxDiscovery(context: Context) {
                 }
             }
 
-            fun finish(result: String?) {
+            fun finish(result: FoxFound?) {
                 stop()
                 if (cont.isActive) cont.resume(result)
             }
@@ -56,7 +59,10 @@ class FoxDiscovery(context: Context) {
                         is Inet6Address -> "[" + (addr.hostAddress ?: "").replace("%", "%25") + "]"
                         else -> null
                     }
-                    if (text != null) finish(text) else resolving = false
+                    // имя службы — "DigiFox MPD on <hostname>": отсюда имя Фокса в сети
+                    val name = info.serviceName.substringAfterLast(" on ", "").trim()
+                        .takeIf { it.isNotEmpty() && it.all { c -> c.isLetterOrDigit() || c == '-' } }
+                    if (text != null) finish(FoxFound(text, name?.let { "$it.local" })) else resolving = false
                 }
             }
 

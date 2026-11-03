@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Плееры DigiFox (PureFox): id для handle_service.php и подпись на экране */
 data class Player(val id: String, val label: String)
@@ -89,6 +90,27 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         if (ui.host.isBlank()) discover()
+        else if (isIp(ui.host)) viewModelScope.launch { preferLocal() }
+    }
+
+    // ---------------- имя .local в приоритете ----------------
+    // Адрес Фокса (IP) роутер может сменить, а имя digifox.local остаётся тем же.
+    // Поэтому подключаемся по имени, если оно отвечает, и только иначе — по IP.
+
+    private fun isIp(h: String) = h.startsWith("[") || h.all { it.isDigit() || it == '.' || it == ':' }
+
+    private suspend fun answers(h: String): Boolean = withTimeoutOrNull(4000) {
+        try { FoxApi(h).status(); true } catch (e: Exception) { false }
+    } ?: false
+
+    /** Лучший адрес для найденного Фокса: имя .local, если по нему отвечает, иначе IP */
+    private suspend fun bestHost(f: FoxFound): String =
+        f.local?.takeIf { answers(it) } ?: f.addr
+
+    /** Сохранён IP: найти тот же Фокс по mDNS и перейти на его имя .local */
+    private suspend fun preferLocal() {
+        val f = discovery.find(6000) ?: return
+        if (f.addr == ui.host && f.local != null && answers(f.local)) setHost(f.local)
     }
 
     // ---------------- подключение ----------------
@@ -110,16 +132,15 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         if (ui.discovering) return
         viewModelScope.launch {
             ui = ui.copy(discovering = true, error = null)
-            val found = discovery.find()
+            // сначала имена по умолчанию (digifox.local, purefox.local), потом поиск по mDNS
+            val byName = DEFAULT_HOSTS.firstOrNull { answers(it) }
+            val found = if (byName == null) discovery.find() else null
+            val h = byName ?: found?.let { bestHost(it) }
             ui = ui.copy(discovering = false)
-            if (found != null) {
-                setHost(found)
-            } else if (api == null) {
-                // mDNS не нашёл — пробуем имена по умолчанию: DigiFox, затем стоковый PureFox
-                val h = DEFAULT_HOSTS.firstOrNull { h ->
-                    try { FoxApi(h).status(); true } catch (e: Exception) { false }
-                } ?: DEFAULT_HOSTS.first()
+            if (h != null) {
                 setHost(h)
+            } else if (api == null) {
+                setHost(DEFAULT_HOSTS.first())
             } else {
                 ui = ui.copy(error = "Фокс в сети не найден")
             }
@@ -134,10 +155,11 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             ui = ui.copy(discovering = true)
             val found = discovery.find(6000)
+            val h = found?.let { bestHost(it) }
             ui = ui.copy(discovering = false)
-            if (found != null && found != ui.host && !ui.connected) {
-                ui = ui.copy(error = "Фокс найден по новому адресу $found")
-                setHost(found)
+            if (h != null && h != ui.host && !ui.connected) {
+                ui = ui.copy(error = "Фокс найден: $h")
+                setHost(h)
             }
         }
     }
