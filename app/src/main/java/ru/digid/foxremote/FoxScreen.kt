@@ -292,7 +292,7 @@ private fun TrackProgress(t: Track) {
 }
 
 /** Плееры, которыми управляют кнопки ⏮ ⏯ ⏭ */
-private val CTL_PLAYERS = setOf("mpd", "aplayer", "raat", "qobuz")
+private val CTL_PLAYERS = setOf("mpd", "aplayer", "raat", "qobuz", "spotify")
 
 @Composable
 private fun Display(ui: UiState, onCtl: (String) -> Unit = {}) {

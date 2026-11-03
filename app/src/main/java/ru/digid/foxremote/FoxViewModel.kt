@@ -300,6 +300,7 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
                     why.startsWith("unsupported") -> "Этим плеером кнопки не управляют"
                     why == "raat_no_control" -> "Roon не принял команду"
                     why.startsWith("qobuz") -> "Qobuz не принял команду"
+                    why.startsWith("spotify") -> "Spotify не принял команду (нужна прошивка Фокса с go-librespot)"
                     else -> "Не удалось: $why"
                 }
                 Toast.makeText(getApplication(), msg, Toast.LENGTH_SHORT).show()
