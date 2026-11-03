@@ -109,6 +109,10 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Сохранён IP: найти тот же Фокс по mDNS и перейти на его имя .local */
     private suspend fun preferLocal() {
+        // по сохранённому IP не отвечает — сразу имена по умолчанию
+        if (!answers(ui.host)) {
+            DEFAULT_HOSTS.firstOrNull { answers(it) }?.let { setHost(it); return }
+        }
         val f = discovery.find(6000) ?: return
         if (f.addr == ui.host && f.local != null && answers(f.local)) setHost(f.local)
     }
@@ -154,8 +158,10 @@ class FoxViewModel(app: Application) : AndroidViewModel(app) {
         lastAutoFind = now
         viewModelScope.launch {
             ui = ui.copy(discovering = true)
-            val found = discovery.find(6000)
-            val h = found?.let { bestHost(it) }
+            // имена по умолчанию — первыми: на части телефонов поиск mDNS-служб (NSD)
+            // молчит, а имя digifox.local система при этом находит
+            val h = DEFAULT_HOSTS.firstOrNull { it != ui.host && answers(it) }
+                ?: discovery.find(6000)?.let { bestHost(it) }
             ui = ui.copy(discovering = false)
             if (h != null && h != ui.host && !ui.connected) {
                 ui = ui.copy(error = "Фокс найден: $h")
