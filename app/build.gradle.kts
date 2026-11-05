@@ -12,8 +12,8 @@ android {
         applicationId = "ru.digid.foxremote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 25
-        versionName = "1.24"
+        versionCode = 26
+        versionName = "1.25"
     }
 
     // Постоянный ключ подписи: без него каждая сборка на GitHub подписывается

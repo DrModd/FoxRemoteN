@@ -323,6 +323,16 @@ internal fun AmpPage(vm: FoxViewModel) {
             Choice(listOf("0" to "ВЫКЛ", "1" to "ВКЛ"), cur("autoon"), can) { vm.adv.ampSet("autoon", it.toInt()) }
         }
 
+        // ---- CLIP GUARD и приглушение экрана (прошивка усилителя 1.15+)
+        val protOk = cfg != null && (cfg["clipg"] ?: -1) >= 0
+        Panel("ЗАЩИТА И ЭКРАН") {
+            Label("CLIP GUARD — при клиппинге убавить на 3 dB")
+            Choice(listOf("0" to "ВЫКЛ", "1" to "−3 dB"), cur("clipg"), protOk && can) { vm.adv.ampSet("clipg", it.toInt()) }
+            Label("Приглушать экран через 30 с без действий")
+            Choice(listOf("0" to "ВЫКЛ", "1" to "ВКЛ"), cur("dim"), protOk && can) { vm.adv.ampSet("dim", it.toInt()) }
+            if (cfg != null && !protOk) Hint("Нужна прошивка усилителя 1.15 или новее (раздел «Прошивка усилителя» ниже).")
+        }
+
         // ---- пределы громкости (прошивка усилителя 1.3+)
         val volOk = cfg != null && (cfg["vmax"] ?: -1) >= 0
         Panel("ГРОМКОСТЬ") {

@@ -457,7 +457,7 @@ class FoxApi(private val host: String) {
     }
 }
 
-val AMP_KEYS = listOf("filter", "delay", "dsdgain", "standby", "autoon", "mode", "vmax", "von")
+val AMP_KEYS = listOf("filter", "delay", "dsdgain", "standby", "autoon", "mode", "vmax", "von", "dim", "clipg")  // dim/clipg — усилитель 1.15+
 
 /** Будильник (amp.php: /etc/digifox/alarm.conf). days — "12345" (1 = пн). vol — дБ */
 data class Alarm(val on: Boolean, val time: String, val days: String, val src: String, val vol: Int)
